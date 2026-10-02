@@ -1,8 +1,8 @@
 {
-  "version": 5,
+  "version": 6,
   "cmakeMinimumRequired": {
     "major": 3,
-    "minor": 22,
+    "minor": 23,
     "patch": 0
   },
   "configurePresets": [
@@ -10,6 +10,11 @@
       "name": "dist_solver-Debug",
       "generator": "Ninja",
       "binaryDir": "build_Debug",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
       "environment": {
         "BOOST_PATH": "C:/local/boost_1_89_0/lib64-msvc-14.3/cmake/Boost-1.89.0"
       },
@@ -22,6 +27,11 @@
       "name": "dist_solver-RelWithDebInfo",
       "generator": "Ninja",
       "binaryDir": "build_RelWithDebInfo",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
       "environment": {
         "BOOST_PATH": "C:/local/boost_1_89_0/lib64-msvc-14.3/cmake/Boost-1.89.0"
       },
@@ -34,11 +44,61 @@
       "name": "dist_solver-Release",
       "generator": "Ninja",
       "binaryDir": "build_Release",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
       "environment": {
         "BOOST_PATH": "C:/local/boost_1_89_0/lib64-msvc-14.3/cmake/Boost-1.89.0"
       },
       "cacheVariables": {
         "CMAKE_PREFIX_PATH": "$env{BOOST_PATH}",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "dist_solver-macos-base",
+      "hidden": true,
+      "generator": "Ninja",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
+      "environment": {
+        "HOMEBREW_PATH": "/opt/homebrew"
+      },
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "$env{HOMEBREW_PATH}",
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "dist_solver-macos-Debug",
+      "displayName": "dist_solver macOS Debug",
+      "inherits": "dist_solver-macos-base",
+      "binaryDir": "build_Debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "dist_solver-macos-RelWithDebInfo",
+      "displayName": "dist_solver macOS RelWithDebInfo",
+      "inherits": "dist_solver-macos-base",
+      "binaryDir": "build_RelWithDebInfo",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "dist_solver-macos-Release",
+      "displayName": "dist_solver macOS Release",
+      "inherits": "dist_solver-macos-base",
+      "binaryDir": "build_Release",
+      "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release"
       }
     }
@@ -61,6 +121,40 @@
       "displayName": "Build dist_solver-build",
       "configurePreset": "dist_solver-Release",
       "jobs": 9
+    },
+    {
+      "name": "dist_solver-macos-build: Debug",
+      "displayName": "Build dist_solver macOS Debug",
+      "configurePreset": "dist_solver-macos-Debug",
+      "jobs": 9
+    },
+    {
+      "name": "dist_solver-macos-build: RelWithDebInfo",
+      "displayName": "Build dist_solver macOS RelWithDebInfo",
+      "configurePreset": "dist_solver-macos-RelWithDebInfo",
+      "jobs": 9
+    },
+    {
+      "name": "dist_solver-macos-build: Release",
+      "displayName": "Build dist_solver macOS Release",
+      "configurePreset": "dist_solver-macos-Release",
+      "jobs": 9
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "dist_solver-macos-all",
+      "displayName": "Configure and build dist_solver on macOS (Debug)",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "dist_solver-macos-Debug"
+        },
+        {
+          "type": "build",
+          "name": "dist_solver-macos-build: Debug"
+        }
+      ]
     }
   ]
 }
