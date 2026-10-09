@@ -10,7 +10,11 @@
       "name": "win-base",
       "hidden": true,
       "generator": "Ninja",
-      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
       "environment": {
         "BOOST_PATH": "C:/local/boost_1_89_0/lib64-msvc-14.3/cmake/Boost-1.89.0"
       },
@@ -22,7 +26,11 @@
       "name": "mac-base",
       "hidden": true,
       "generator": "Ninja",
-      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      },
       "environment": {
         "HOMEBREW_PATH": "/opt/homebrew"
       },
@@ -36,40 +44,197 @@
       "name": "linux-base",
       "hidden": true,
       "generator": "Ninja",
-      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
       "cacheVariables": {
         "CMAKE_C_COMPILER": "gcc",
         "CMAKE_CXX_COMPILER": "g++",
         "CMAKE_POLICY_VERSION_MINIMUM": "3.5"
       }
     },
-
-    { "name": "win-debug",   "displayName": "Windows Debug",          "inherits": "win-base",   "binaryDir": "build_Debug",          "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } },
-    { "name": "win-reldbg",  "displayName": "Windows RelWithDebInfo", "inherits": "win-base",   "binaryDir": "build_RelWithDebInfo", "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" } },
-    { "name": "win-release", "displayName": "Windows Release",        "inherits": "win-base",   "binaryDir": "build_Release",        "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } },
-
-    { "name": "mac-debug",   "displayName": "macOS Debug",            "inherits": "mac-base",   "binaryDir": "build_Debug",          "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } },
-    { "name": "mac-reldbg",  "displayName": "macOS RelWithDebInfo",   "inherits": "mac-base",   "binaryDir": "build_RelWithDebInfo", "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" } },
-    { "name": "mac-release", "displayName": "macOS Release",          "inherits": "mac-base",   "binaryDir": "build_Release",        "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } },
-
-    { "name": "linux-debug",   "displayName": "Linux Debug",          "inherits": "linux-base", "binaryDir": "build_Debug",          "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" } },
-    { "name": "linux-reldbg",  "displayName": "Linux RelWithDebInfo", "inherits": "linux-base", "binaryDir": "build_RelWithDebInfo", "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" } },
-    { "name": "linux-release", "displayName": "Linux Release",        "inherits": "linux-base", "binaryDir": "build_Release",        "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } }
+    {
+      "name": "win-debug",
+      "displayName": "Windows Debug",
+      "inherits": "win-base",
+      "binaryDir": "build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "win-reldbg",
+      "displayName": "Windows RelWithDebInfo",
+      "inherits": "win-base",
+      "binaryDir": "build_RelWithDebInfo",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "win-release",
+      "displayName": "Windows Release",
+      "inherits": "win-base",
+      "binaryDir": "build_Release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "mac-debug",
+      "displayName": "macOS Debug",
+      "inherits": "mac-base",
+      "binaryDir": "build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "mac-reldbg",
+      "displayName": "macOS RelWithDebInfo",
+      "inherits": "mac-base",
+      "binaryDir": "build_RelWithDebInfo",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "mac-release",
+      "displayName": "macOS Release",
+      "inherits": "mac-base",
+      "binaryDir": "build_Release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "linux-debug",
+      "displayName": "Linux Debug",
+      "inherits": "linux-base",
+      "binaryDir": "build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "linux-reldbg",
+      "displayName": "Linux RelWithDebInfo",
+      "inherits": "linux-base",
+      "binaryDir": "build_RelWithDebInfo",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Linux Release",
+      "inherits": "linux-base",
+      "binaryDir": "build_Release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    }
   ],
   "buildPresets": [
-    { "name": "win-debug",     "displayName": "Windows Debug",          "configurePreset": "win-debug",     "jobs": 9 },
-    { "name": "win-reldbg",    "displayName": "Windows RelWithDebInfo", "configurePreset": "win-reldbg",    "jobs": 9 },
-    { "name": "win-release",   "displayName": "Windows Release",        "configurePreset": "win-release",   "jobs": 9 },
-    { "name": "mac-debug",     "displayName": "macOS Debug",            "configurePreset": "mac-debug",     "jobs": 9 },
-    { "name": "mac-reldbg",    "displayName": "macOS RelWithDebInfo",   "configurePreset": "mac-reldbg",    "jobs": 9 },
-    { "name": "mac-release",   "displayName": "macOS Release",          "configurePreset": "mac-release",   "jobs": 9 },
-    { "name": "linux-debug",   "displayName": "Linux Debug",            "configurePreset": "linux-debug",   "jobs": 9 },
-    { "name": "linux-reldbg",  "displayName": "Linux RelWithDebInfo",   "configurePreset": "linux-reldbg",  "jobs": 9 },
-    { "name": "linux-release", "displayName": "Linux Release",          "configurePreset": "linux-release", "jobs": 9 }
+    {
+      "name": "win-debug",
+      "displayName": "Windows Debug",
+      "configurePreset": "win-debug",
+      "jobs": 9
+    },
+    {
+      "name": "win-reldbg",
+      "displayName": "Windows RelWithDebInfo",
+      "configurePreset": "win-reldbg",
+      "jobs": 9
+    },
+    {
+      "name": "win-release",
+      "displayName": "Windows Release",
+      "configurePreset": "win-release",
+      "jobs": 9
+    },
+    {
+      "name": "mac-debug",
+      "displayName": "macOS Debug",
+      "configurePreset": "mac-debug",
+      "jobs": 9
+    },
+    {
+      "name": "mac-reldbg",
+      "displayName": "macOS RelWithDebInfo",
+      "configurePreset": "mac-reldbg",
+      "jobs": 9
+    },
+    {
+      "name": "mac-release",
+      "displayName": "macOS Release",
+      "configurePreset": "mac-release",
+      "jobs": 9
+    },
+    {
+      "name": "linux-debug",
+      "displayName": "Linux Debug",
+      "configurePreset": "linux-debug",
+      "jobs": 2
+    },
+    {
+      "name": "linux-reldbg",
+      "displayName": "Linux RelWithDebInfo",
+      "configurePreset": "linux-reldbg",
+      "jobs": 2
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Linux Release",
+      "configurePreset": "linux-release",
+      "jobs": 2
+    }
   ],
   "workflowPresets": [
-    { "name": "win",   "displayName": "Windows: configure + build (Debug)", "steps": [ { "type": "configure", "name": "win-debug" },   { "type": "build", "name": "win-debug" } ] },
-    { "name": "mac",   "displayName": "macOS: configure + build (Debug)",   "steps": [ { "type": "configure", "name": "mac-debug" },   { "type": "build", "name": "mac-debug" } ] },
-    { "name": "linux", "displayName": "Linux: configure + build (Debug)",   "steps": [ { "type": "configure", "name": "linux-debug" }, { "type": "build", "name": "linux-debug" } ] }
+    {
+      "name": "win",
+      "displayName": "Windows: configure + build (Debug)",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "win-debug"
+        },
+        {
+          "type": "build",
+          "name": "win-debug"
+        }
+      ]
+    },
+    {
+      "name": "mac",
+      "displayName": "macOS: configure + build (Debug)",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "mac-debug"
+        },
+        {
+          "type": "build",
+          "name": "mac-debug"
+        }
+      ]
+    },
+    {
+      "name": "linux",
+      "displayName": "Linux: configure + build (Debug)",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "linux-debug"
+        },
+        {
+          "type": "build",
+          "name": "linux-debug"
+        }
+      ]
+    }
   ]
 }
