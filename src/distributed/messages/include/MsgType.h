@@ -122,13 +122,41 @@ private:
     template <typename Archive>
     void save(Archive& ar, unsigned) const
     {
-        pagmo::detail::to_archive(ar, dll_name, dll_file);
+        // Boost only gained std::optional support in
+        // recent versions; Debian 13 ships 1.83,
+        // whose serialization/optional.hpp covers
+        // boost::optional only. Write the presence
+        // flag and the payload separately so no Boost
+        // version is required to know about
+        // std::optional.
+        const bool has_file = dll_file.has_value();
+        pagmo::detail::to_archive(ar, dll_name, has_file);
+
+        if (has_file)
+        {
+            pagmo::detail::to_archive(ar, *dll_file);
+        }
     }
 
     template <typename Archive>
     void load(Archive& ar, unsigned)
     {
-        pagmo::detail::from_archive(ar, dll_name, dll_file);
+        // Must mirror save() exactly: an archive is a
+        // stream, so a mismatched read count
+        // corrupts everything deserialized afterwards
+        bool has_file = false;
+        pagmo::detail::from_archive(ar, dll_name, has_file);
+
+        if (has_file)
+        {
+            std::vector<std::byte> file;
+            pagmo::detail::from_archive(ar, file);
+            dll_file = std::move(file);
+        }
+        else
+        {
+            dll_file.reset();
+        }
     }
 
     BOOST_SERIALIZATION_SPLIT_MEMBER()
