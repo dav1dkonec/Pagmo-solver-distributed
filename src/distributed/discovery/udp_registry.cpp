@@ -31,10 +31,21 @@ void udp_registry::initialize_udp(const std::string& name, const std::optional<s
 
         if (hash != libFileHash.value())
         {
-            // If we reach this branch, it means the lib file we have locally is outdated
-            // We need to unload it (if it's loaded) and then delete it from cache and local FS
-            _unload_lib(name);
-            _delete_lib_file(name);
+            // The controller's copy is normally the authoritative one, but it is a compiled
+            // artifact: one built for a different platform cannot be loaded here. Only discard
+            // a working library once we know its replacement works too.
+            if (!_try_replace_lib_from_provider(name, libFileHash.value()))
+            {
+                // initialize_udp runs on both sides of the connection, so the peer here may be a
+                // worker as well as the controller. A node with no provider of its own is the one
+                // handing libraries out, so it has nothing to replace its copy with and this is
+                // its normal state rather than a problem worth warning about.
+                const auto level = _udp_provider ? spdlog::level::warn : spdlog::level::debug;
+                spdlog::log(level,
+                            "Keeping the local build of '{}': the peer's artifact (hash {}) is not "
+                            "loadable on this platform, local hash is {}",
+                            name, libFileHash.value(), hash.value());
+            }
         }
     }
 
@@ -250,8 +261,11 @@ void udp_registry::_save_lib_into_fs(const std::string& libName, const std::vect
 {
     spdlog::trace("udp_registry saving lib file: {}", libName);
 
-    const std::filesystem::path libPath = _get_lib_path(libName);
+    _write_lib_file(_get_lib_path(libName), libFile);
+}
 
+void udp_registry::_write_lib_file(const std::filesystem::path& libPath, const std::vector<std::byte>& libFile)
+{
     // We're assuming the higher level directories exist
     if (!std::filesystem::exists(_local_cache))
         std::filesystem::create_directory(_local_cache);
@@ -264,6 +278,60 @@ void udp_registry::_save_lib_into_fs(const std::string& libName, const std::vect
 
     if (!file)
         throw std::runtime_error("Error: Failed write to file " + libPath.string());
+}
+
+bool udp_registry::_try_replace_lib_from_provider(const std::string& libName, const std::string& remoteHash)
+{
+    // initialize_udp runs on every deserialization, so without this check we would re-fetch the
+    // same unusable artifact for every message this worker receives
+    if (_rejectedRemoteHashes.contains(remoteHash))
+        return false;
+
+    if (!_udp_provider)
+        return false;
+
+    const auto libFile = _udp_provider(libName);
+    if (!libFile.has_value())
+        return false;
+
+    // Write the candidate next to the library and never over it, so that a failure leaves the
+    // working copy untouched
+    const std::filesystem::path candidate =
+        _local_cache / std::string{libName + ".incoming" + portable_dll_extension()};
+
+    _write_lib_file(candidate, libFile.value());
+
+    if (!_is_loadable(candidate))
+    {
+        std::filesystem::remove(candidate);
+        _rejectedRemoteHashes.insert(remoteHash);
+        return false;
+    }
+
+    // The replacement works, so it's now safe to drop the old one
+    _unload_lib(libName);
+    _delete_lib_file(libName);
+    std::filesystem::rename(candidate, _get_lib_path(libName));
+
+    spdlog::debug("Replaced local '{}' with the controller's copy", libName);
+    return true;
+}
+
+bool udp_registry::_is_loadable(const std::filesystem::path& libPath) const
+{
+    try
+    {
+        // open_lib() only dlopens, run_after_load() is invoked later on first use,
+        // so probing the file does not execute any of the UDP's own code
+        lib_loader<udp_base> probe{libPath.string()};
+        probe.open_lib();
+        return true; // probe's destructor closes the handle again
+    }
+    catch (const std::exception& e)
+    {
+        spdlog::debug("Candidate library {} is not loadable here: {}", libPath.string(), e.what());
+        return false;
+    }
 }
 
 void udp_registry::_load_lib(const std::string& libName)

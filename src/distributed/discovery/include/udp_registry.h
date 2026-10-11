@@ -7,6 +7,7 @@
 #include <queue>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <any>
 
 #include "hash_cache.h"
@@ -89,7 +90,26 @@ private:
     // Cache for the get_lib_file_hash() function, this prevents repeated re-computing of hashes
     hash_cache _hash_cache{};
 
+    // Controller artifacts which cannot be loaded on this platform, keyed by the hash the
+    // controller sent. Keyed on the hash and not on the name, so that a new build on the
+    // controller is still retried.
+    std::unordered_set<std::string> _rejectedRemoteHashes{};
+
     void _save_lib_into_fs(const std::string& libName, const std::vector<std::byte>& libFile);
+
+    void _write_lib_file(const std::filesystem::path& libPath, const std::vector<std::byte>& libFile);
+
+    /**
+     * Fetches the library from the provider and replaces the local copy, but only if the fetched
+     * file can actually be loaded by this process
+     * @return true if the local copy was replaced
+     */
+    bool _try_replace_lib_from_provider(const std::string& libName, const std::string& remoteHash);
+
+    /**
+     * Returns true if the file at this path can be loaded as a dynamic library here
+     */
+    bool _is_loadable(const std::filesystem::path& libPath) const;
 
     void _load_lib(const std::string& libName);
 
