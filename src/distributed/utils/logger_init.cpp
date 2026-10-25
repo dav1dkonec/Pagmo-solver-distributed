@@ -27,8 +27,9 @@ void use_file_logger(const std::string& filePath, const bool enableConsole)
     logger->set_level(spdlog::level::trace);
     logger->flush_on(spdlog::level::warn);
 
-    spdlog::register_logger(logger); // Use spdlog registry
-    spdlog::set_default_logger(logger); // This allows us to use standard spdlog logging functions
+    // set_default_logger() registers the logger itself, so an explicit
+    // register_logger() would throw on the second run.
+    spdlog::set_default_logger(logger);
 }
 
 void use_null_logger()
@@ -36,13 +37,7 @@ void use_null_logger()
     const auto null_logger = std::make_shared<spdlog::logger>("null_logger",
                                                               std::make_shared<spdlog::sinks::null_sink_mt>());
     null_logger->set_level(spdlog::level::off);
-    spdlog::register_logger(null_logger);
     spdlog::set_default_logger(null_logger);
-}
-
-void shutdown_logger()
-{
-    spdlog::shutdown();
 }
 
 std::string generate_log_filename(const std::string& basePath)

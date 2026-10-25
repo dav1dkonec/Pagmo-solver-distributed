@@ -9,7 +9,9 @@ logger_control::~logger_control()
 {
     if (_loggerEnabled)
     {
-        shutdown_logger();
+        // Swap in a logger that discards everything. spdlog::shutdown() would instead
+        // leave the default logger pointer null and crash the next log call.
+        use_null_logger();
     }
 }
 
