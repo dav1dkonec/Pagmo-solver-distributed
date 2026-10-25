@@ -90,9 +90,8 @@ private:
     // Cache for the get_lib_file_hash() function, this prevents repeated re-computing of hashes
     hash_cache _hash_cache{};
 
-    // Controller artifacts which cannot be loaded on this platform, keyed by the hash the
-    // controller sent. Keyed on the hash and not on the name, so that a new build on the
-    // controller is still retried.
+    // Peer artifacts that cannot be loaded here. Keyed by hash, not by name, so that a
+    // new build on the peer is still retried.
     std::unordered_set<std::string> _rejectedRemoteHashes{};
 
     void _save_lib_into_fs(const std::string& libName, const std::vector<std::byte>& libFile);

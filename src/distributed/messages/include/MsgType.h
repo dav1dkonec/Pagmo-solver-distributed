@@ -122,13 +122,8 @@ private:
     template <typename Archive>
     void save(Archive& ar, unsigned) const
     {
-        // Boost only gained std::optional support in
-        // recent versions; Debian 13 ships 1.83,
-        // whose serialization/optional.hpp covers
-        // boost::optional only. Write the presence
-        // flag and the payload separately so no Boost
-        // version is required to know about
-        // std::optional.
+        // My Debian 13 node ships Boost 1.83, which serializes boost::optional
+        // but not std::optional. Write the flag and the payload separately.
         const bool has_file = dll_file.has_value();
         pagmo::detail::to_archive(ar, dll_name, has_file);
 
@@ -141,9 +136,8 @@ private:
     template <typename Archive>
     void load(Archive& ar, unsigned)
     {
-        // Must mirror save() exactly: an archive is a
-        // stream, so a mismatched read count
-        // corrupts everything deserialized afterwards
+        // Must mirror save(): an archive is a stream, a mismatched read count
+        // corrupts everything read after it.
         bool has_file = false;
         pagmo::detail::from_archive(ar, dll_name, has_file);
 

@@ -31,15 +31,12 @@ void udp_registry::initialize_udp(const std::string& name, const std::optional<s
 
         if (hash != libFileHash.value())
         {
-            // The controller's copy is normally the authoritative one, but it is a compiled
-            // artifact: one built for a different platform cannot be loaded here. Only discard
-            // a working library once we know its replacement works too.
+            // The peer's copy is authoritative, but a binary built for another platform
+            // cannot be loaded here. Only discard a working library once its replacement works.
             if (!_try_replace_lib_from_provider(name, libFileHash.value()))
             {
-                // initialize_udp runs on both sides of the connection, so the peer here may be a
-                // worker as well as the controller. A node with no provider of its own is the one
-                // handing libraries out, so it has nothing to replace its copy with and this is
-                // its normal state rather than a problem worth warning about.
+                // No provider means this node is the controller, which serves libraries
+                // instead of fetching them - expected, not a problem.
                 const auto level = _udp_provider ? spdlog::level::warn : spdlog::level::debug;
                 spdlog::log(level,
                             "Keeping the local build of '{}': the peer's artifact (hash {}) is not "
@@ -321,8 +318,8 @@ bool udp_registry::_is_loadable(const std::filesystem::path& libPath) const
 {
     try
     {
-        // open_lib() only dlopens, run_after_load() is invoked later on first use,
-        // so probing the file does not execute any of the UDP's own code
+        // open_lib() only dlopens; run_after_load() runs later, on first use.
+        // dlopen does still run the library's static initializers.
         lib_loader<udp_base> probe{libPath.string()};
         probe.open_lib();
         return true; // probe's destructor closes the handle again
