@@ -74,8 +74,10 @@ private:
     // Recursive so public functions can call each other (one thread can lock it multiple times)
     std::recursive_mutex  _registryMutex{};
 
-    // Where to store or look for DLL files
-    std::filesystem::path _local_cache = ".";
+    // Where to store or look for DLL files. Never the working directory by default: a peer's
+    // copy replaces the local one, which would overwrite build output. Callers that serve
+    // libraries from a build directory have to say so explicitly.
+    std::filesystem::path _local_cache = "udp_cache";
 
     // An in-memory cache which prevents repeated reading of the DLL file from FS
     bool _use_in_memory_cache = true;
