@@ -275,6 +275,17 @@ void distributed_solver::wait_until_workers_connect()
     wait_until_workers_connect(_expectedWorkerCount);
 }
 
+bool distributed_solver::wait_until_workers_connect(const size_t workerCount,
+                                                   const std::chrono::milliseconds timeout)
+{
+    return _controller.get_worker_info_repository().wait_until_worker_count(workerCount, timeout);
+}
+
+bool distributed_solver::wait_until_workers_connect(const std::chrono::milliseconds timeout)
+{
+    return wait_until_workers_connect(_expectedWorkerCount, timeout);
+}
+
 size_t distributed_solver::get_current_worker_count()
 {
     return _controller.get_worker_info_repository().get_worker_count();

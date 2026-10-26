@@ -94,6 +94,9 @@ public:
 
     void wait_until_worker_count(size_t target);
 
+    // Same, but gives up after timeout. Returns whether the target was reached.
+    bool wait_until_worker_count(size_t target, std::chrono::milliseconds timeout);
+
 private:
     //####################################
     //# BOOST SERIALIZE

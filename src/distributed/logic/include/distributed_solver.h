@@ -68,6 +68,11 @@ public:
 
     void wait_until_workers_connect();
 
+    // Same, but gives up after timeout. Returns whether all expected workers connected.
+    bool wait_until_workers_connect(size_t workerCount, std::chrono::milliseconds timeout);
+
+    bool wait_until_workers_connect(std::chrono::milliseconds timeout);
+
     size_t get_current_worker_count();
 
     size_t get_expected_worker_count() const;

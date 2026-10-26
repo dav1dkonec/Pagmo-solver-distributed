@@ -140,4 +140,19 @@ TEST_CASE("Worker Info Repository - wait until", "[worker-info]") {
         
         t.join();
     }
+    
+    SECTION("timed wait gives up when nobody connects") {
+        auto start = std::chrono::high_resolution_clock::now();
+        const bool reached = repo.wait_until_worker_count(1, std::chrono::milliseconds(50));
+        auto end = std::chrono::high_resolution_clock::now();
+        
+        REQUIRE_FALSE(reached);
+        REQUIRE(std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() >= 50);
+    }
+    
+    SECTION("timed wait returns immediately when target is already met") {
+        repo.worker_joined("worker1");
+        
+        REQUIRE(repo.wait_until_worker_count(1, std::chrono::milliseconds(5000)));
+    }
 }

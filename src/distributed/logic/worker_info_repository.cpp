@@ -108,3 +108,14 @@ void worker_info_repository::wait_until_worker_count(const size_t target)
         return _connectedWorkers.size() >= target;
     });
 }
+
+bool worker_info_repository::wait_until_worker_count(const size_t target, const std::chrono::milliseconds timeout)
+{
+    std::unique_lock lock(_mtx);
+    spdlog::info("Waiting up to {} ms until {} workers connect...", timeout.count(), target);
+
+    return _cv.wait_for(lock, timeout, [&]
+    {
+        return _connectedWorkers.size() >= target;
+    });
+}
