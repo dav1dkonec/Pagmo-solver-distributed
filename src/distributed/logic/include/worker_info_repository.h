@@ -18,8 +18,10 @@ struct work_stats
      * will never overflow.
     */
 
-    // Total time spent by the worker on running computations
+    // Total round-trip time measured by the controller: transfer + computation
     uint64_t workTime = 0;
+    // Of which the worker reported as computation. workTime - evolveTime is the transfer cost.
+    uint64_t evolveTime = 0;
     // Total number of population individuals processed by this worker
     uint64_t processedPopulation = 0;
 
@@ -34,6 +36,7 @@ private:
     void serialize(Archive& ar, unsigned)
     {
         ar & BOOST_SERIALIZATION_NVP(workTime);
+        ar & BOOST_SERIALIZATION_NVP(evolveTime);
         ar & BOOST_SERIALIZATION_NVP(processedPopulation);
     }
 };
@@ -80,7 +83,8 @@ public:
 
     void worker_started_work(const std::string& workerID);
 
-    void worker_finished_work(const std::string& workerID, size_t processedPopulation, const std::string& algoName);
+    void worker_finished_work(const std::string& workerID, size_t processedPopulation, const std::string& algoName,
+                              uint64_t evolveTimeMs);
 
     std::optional<worker_info> get_worker_info(const std::string& workerID);
 

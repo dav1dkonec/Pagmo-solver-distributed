@@ -41,7 +41,7 @@ void worker_info_repository::worker_started_work(const std::string& workerID)
 }
 
 void worker_info_repository::worker_finished_work(const std::string& workerID, const size_t processedPopulation,
-                                                  const std::string& algoName)
+                                                  const std::string& algoName, const uint64_t evolveTimeMs)
 {
     std::scoped_lock lock(_mtx);
     spdlog::info("Worker finished work - info collected");
@@ -58,10 +58,14 @@ void worker_info_repository::worker_finished_work(const std::string& workerID, c
     const auto workTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
 
     wInfo.totalStats.workTime += workTime;
+    wInfo.totalStats.evolveTime += evolveTimeMs;
     wInfo.totalStats.processedPopulation += processedPopulation;
 
     wInfo.statsByAlgorithm[algoName].workTime += workTime;
+    wInfo.statsByAlgorithm[algoName].evolveTime += evolveTimeMs;
     wInfo.statsByAlgorithm[algoName].processedPopulation += processedPopulation;
+
+    spdlog::debug("{} round-trip {} ms, of which {} ms computing", workerID, workTime, evolveTimeMs);
 }
 
 std::optional<worker_info> worker_info_repository::get_worker_info(

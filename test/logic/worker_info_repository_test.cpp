@@ -38,12 +38,15 @@ TEST_CASE("Worker Info Repository - work tracking", "[worker-info]") {
         repo.worker_started_work("worker1");
         
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
-        repo.worker_finished_work("worker1", 50, "DE");
+        repo.worker_finished_work("worker1", 50, "DE", 12);
         
         auto info = repo.get_worker_info("worker1");
         REQUIRE(info.has_value());
         REQUIRE(info->totalStats.processedPopulation == 50);
         REQUIRE(info->totalStats.workTime > 0);
+        // The worker reported 12 ms of it as computation; the rest is transfer.
+        REQUIRE(info->totalStats.evolveTime == 12);
+        REQUIRE(info->totalStats.workTime >= info->totalStats.evolveTime);
     }
     
     SECTION("track multiple jobs") {
@@ -51,14 +54,15 @@ TEST_CASE("Worker Info Repository - work tracking", "[worker-info]") {
         
         repo.worker_started_work("worker1");
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        repo.worker_finished_work("worker1", 100, "DE");
+        repo.worker_finished_work("worker1", 100, "DE", 5);
         
         repo.worker_started_work("worker1");
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        repo.worker_finished_work("worker1", 200, "PSO");
+        repo.worker_finished_work("worker1", 200, "PSO", 7);
         
         auto info = repo.get_worker_info("worker1");
         REQUIRE(info->totalStats.processedPopulation == 300);
+        REQUIRE(info->totalStats.evolveTime == 12);
     }
     
     SECTION("stats by algorithm") {
@@ -66,19 +70,21 @@ TEST_CASE("Worker Info Repository - work tracking", "[worker-info]") {
         
         repo.worker_started_work("worker1");
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        repo.worker_finished_work("worker1", 100, "DE");
+        repo.worker_finished_work("worker1", 100, "DE", 4);
         
         repo.worker_started_work("worker1");
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        repo.worker_finished_work("worker1", 150, "DE");
+        repo.worker_finished_work("worker1", 150, "DE", 6);
         
         repo.worker_started_work("worker1");
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        repo.worker_finished_work("worker1", 50, "PSO");
+        repo.worker_finished_work("worker1", 50, "PSO", 3);
         
         auto info = repo.get_worker_info("worker1");
         REQUIRE(info->statsByAlgorithm["DE"].processedPopulation == 250);
         REQUIRE(info->statsByAlgorithm["PSO"].processedPopulation == 50);
+        REQUIRE(info->statsByAlgorithm["DE"].evolveTime == 10);
+        REQUIRE(info->statsByAlgorithm["PSO"].evolveTime == 3);
     }
 }
 
@@ -110,7 +116,7 @@ TEST_CASE("Worker Info Repository - error handling", "[worker-info]") {
     
     SECTION("finish work on unknown throws") {
         REQUIRE_THROWS_AS(
-            repo.worker_finished_work("unknown", 100, "DE"),
+            repo.worker_finished_work("unknown", 100, "DE", 0),
             std::runtime_error
         );
     }

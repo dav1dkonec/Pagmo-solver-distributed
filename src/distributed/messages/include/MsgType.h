@@ -6,6 +6,7 @@
 #include <pagmo/detail/s11n_wrappers.hpp>
 #include <utility>
 #include <optional>
+#include <cstdint>
 
 #include "pagmo/algorithms/nsga2.hpp"
 
@@ -29,6 +30,9 @@ public:
     std::string preferredWorkerId;
     // Archipelago evolution cycle count for the worker
     size_t cycleCount{};
+    // Time the worker spent computing, without transfer or serialization.
+    // Set on the way back, left at 0 on the way out.
+    uint64_t evolveTimeMs{};
 
     work_container(pagmo::algorithm algo, pagmo::population pop, std::string preferredWorker = "",
                    const size_t cycleCount = 1) :
@@ -51,13 +55,13 @@ private:
     template <typename Archive>
     void save(Archive& ar, unsigned) const
     {
-        pagmo::detail::to_archive(ar, algo, pop, preferredWorkerId, cycleCount);
+        pagmo::detail::to_archive(ar, algo, pop, preferredWorkerId, cycleCount, evolveTimeMs);
     }
 
     template <typename Archive>
     void load(Archive& ar, unsigned)
     {
-        pagmo::detail::from_archive(ar, algo, pop, preferredWorkerId, cycleCount);
+        pagmo::detail::from_archive(ar, algo, pop, preferredWorkerId, cycleCount, evolveTimeMs);
     }
 
     BOOST_SERIALIZATION_SPLIT_MEMBER()

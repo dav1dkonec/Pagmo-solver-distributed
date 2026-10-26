@@ -2,6 +2,8 @@
 
 #include "logger_init.h"
 
+#include <chrono>
+#include <cstdint>
 #include <iostream>
 
 #include "population_tools.h"
@@ -10,6 +12,15 @@
 #include "pagmo/islands/thread_island.hpp"
 #include "pagmo/topologies/fully_connected.hpp"
 #include "pagmo/utils/multi_objective.hpp"
+
+namespace
+{
+    uint64_t elapsed_ms(const std::chrono::steady_clock::time_point start)
+    {
+        const auto delta = std::chrono::steady_clock::now() - start;
+        return std::chrono::duration_cast<std::chrono::milliseconds>(delta).count();
+    }
+}
 
 //#####################################################################################
 //# Handling of socket messages
@@ -79,9 +90,13 @@ void distributed_worker::_single_threaded_worker(const pagmo::algorithm& algo, c
 
     spdlog::debug("Running algorithm: {}", algo.get_name());
     spdlog::debug("Population size: {}", pop.size());
+
+    const auto evolveStart = std::chrono::steady_clock::now();
     const pagmo::population new_pop = algo.evolve(pop);
 
-    output.send(MsgType::WORK_RESULTS, work_container{algo, new_pop});
+    work_container results{algo, new_pop};
+    results.evolveTimeMs = elapsed_ms(evolveStart);
+    output.send(MsgType::WORK_RESULTS, results);
 }
 
 
@@ -166,6 +181,10 @@ void distributed_worker::_archipelago_based_worker(pagmo::algorithm& algo, pagmo
     output.set_routing_id("worker_main");
     output.connect("inproc://thread_socket");
 
+    // Everything from here to step 7 is computation done by this node. The controller
+    // cannot see where its own round-trip measurement ends and this begins.
+    const auto evolveStart = std::chrono::steady_clock::now();
+
     // 2) Get island count based on hardware core count
     const unsigned islandCount = _compute_optimal_island_count();
 
@@ -199,7 +218,9 @@ void distributed_worker::_archipelago_based_worker(pagmo::algorithm& algo, pagmo
     );
 
     // 7) Send the algorithm (taken from the first island) and new population back to controller
-    output.send(MsgType::WORK_RESULTS, work_container{archi[0].get_algorithm(), newPop});
+    work_container results{archi[0].get_algorithm(), newPop};
+    results.evolveTimeMs = elapsed_ms(evolveStart);
+    output.send(MsgType::WORK_RESULTS, results);
 }
 
 void distributed_worker::_start_worker_thread(const std::vector<std::byte>& workData)
