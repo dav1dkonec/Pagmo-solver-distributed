@@ -412,6 +412,9 @@ int main(int argc, char* argv[])
     }
     catch (const std::exception& e)
     {
+        // Not spdlog: logger_control() nulls the default logger in its constructor,
+        // so anything thrown before enable_logging() would be discarded.
+        std::cerr << "Fatal: " << e.what() << std::endl;
         return 2;
     }
 
