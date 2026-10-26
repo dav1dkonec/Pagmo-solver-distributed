@@ -22,7 +22,7 @@ struct work_stats
     uint64_t workTime = 0;
     // Of which the worker reported as computation. workTime - evolveTime is the transfer cost.
     uint64_t evolveTime = 0;
-    // Total number of population individuals processed by this worker
+    // Individuals the worker really evolved, as reported by the worker
     uint64_t processedPopulation = 0;
 
 private:

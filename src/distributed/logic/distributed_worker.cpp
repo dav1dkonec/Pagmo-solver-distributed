@@ -96,6 +96,7 @@ void distributed_worker::_single_threaded_worker(const pagmo::algorithm& algo, c
 
     work_container results{algo, new_pop};
     results.evolveTimeMs = elapsed_ms(evolveStart);
+    results.evolvedPopulation = pop.size();
     output.send(MsgType::WORK_RESULTS, results);
 }
 
@@ -191,9 +192,11 @@ void distributed_worker::_archipelago_based_worker(pagmo::algorithm& algo, pagmo
     // 3) Construct and initialize islands with our algorithm and population (pop includes problem)
     pagmo::archipelago archi{pagmo::fully_connected{}};
     const auto islandPops = _split_population_for_islands(pop, islandCount);
+    size_t evolvedPopulation = 0;
     for (size_t i = 0; i < islandCount; ++i)
     {
         spdlog::debug("Archipelago worker island #{} population size: {}", i + 1, islandPops[i].size());
+        evolvedPopulation += islandPops[i].size();
         // Each island gets its portion of the population
         archi.push_back(pagmo::island{algo, islandPops[i]});
     }
@@ -220,6 +223,7 @@ void distributed_worker::_archipelago_based_worker(pagmo::algorithm& algo, pagmo
     // 7) Send the algorithm (taken from the first island) and new population back to controller
     work_container results{archi[0].get_algorithm(), newPop};
     results.evolveTimeMs = elapsed_ms(evolveStart);
+    results.evolvedPopulation = evolvedPopulation;
     output.send(MsgType::WORK_RESULTS, results);
 }
 

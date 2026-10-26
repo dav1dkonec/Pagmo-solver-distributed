@@ -33,6 +33,9 @@ public:
     // Time the worker spent computing, without transfer or serialization.
     // Set on the way back, left at 0 on the way out.
     uint64_t evolveTimeMs{};
+    // Individuals the worker really evolved. Can exceed pop.size(), because an archipelago
+    // worker pads each island up to its minimum size. Also only set on the way back.
+    size_t evolvedPopulation{};
 
     work_container(pagmo::algorithm algo, pagmo::population pop, std::string preferredWorker = "",
                    const size_t cycleCount = 1) :
@@ -55,13 +58,13 @@ private:
     template <typename Archive>
     void save(Archive& ar, unsigned) const
     {
-        pagmo::detail::to_archive(ar, algo, pop, preferredWorkerId, cycleCount, evolveTimeMs);
+        pagmo::detail::to_archive(ar, algo, pop, preferredWorkerId, cycleCount, evolveTimeMs, evolvedPopulation);
     }
 
     template <typename Archive>
     void load(Archive& ar, unsigned)
     {
-        pagmo::detail::from_archive(ar, algo, pop, preferredWorkerId, cycleCount, evolveTimeMs);
+        pagmo::detail::from_archive(ar, algo, pop, preferredWorkerId, cycleCount, evolveTimeMs, evolvedPopulation);
     }
 
     BOOST_SERIALIZATION_SPLIT_MEMBER()

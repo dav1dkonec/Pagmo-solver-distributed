@@ -53,7 +53,7 @@ void distributed_controller::_handle_Workers_Socket_Msg()
         {
             // Write stats into the worker info repository
             const auto workResults = vector_deserialize<work_container>(binary);
-            _settings().workerInfo.worker_finished_work(workerId, workResults.pop.size(),
+            _settings().workerInfo.worker_finished_work(workerId, workResults.evolvedPopulation,
                                                        workResults.algo.get_name(), workResults.evolveTimeMs);
 
             // Pass results from worker to island
