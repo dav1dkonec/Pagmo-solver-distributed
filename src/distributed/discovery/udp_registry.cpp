@@ -13,7 +13,7 @@ void udp_registry::initialize_udp(const std::string& name, const std::optional<s
 {
     std::scoped_lock lock(_registryMutex);
 
-    spdlog::trace("initializing udp library: {}", name);
+    dist_logger()->trace("initializing udp library: {}", name);
 
     // If a file hash was provided, we need to check if we have the same file version
     // (udp_dll_wrapper calls this each time it deserializes itself - i.e. each time worker receives data)
@@ -38,7 +38,7 @@ void udp_registry::initialize_udp(const std::string& name, const std::optional<s
                 // No provider means this node is the controller, which serves libraries
                 // instead of fetching them - expected, not a problem.
                 const auto level = _udp_provider ? spdlog::level::warn : spdlog::level::debug;
-                spdlog::log(level,
+                dist_logger()->log(level,
                             "Keeping the local build of '{}': the peer's artifact (hash {}) is not "
                             "loadable on this platform, local hash is {}",
                             name, libFileHash.value(), hash.value());
@@ -80,7 +80,7 @@ std::shared_ptr<udp_base> udp_registry::construct_udp(const std::string& name, c
     // Anything calling this needs to first acquire the mutex, without this there could be a race condition on if (_udp_provider)
     std::scoped_lock lock(_registryMutex);
 
-    spdlog::trace("constructing an instance of: {}", name);
+    dist_logger()->trace("constructing an instance of: {}", name);
 
     // If this lib is already loaded, simply construct a new object
     if (_lib_loaders.contains(name))
@@ -133,7 +133,7 @@ void udp_registry::register_udp_provider(const udp_provider& providerFunc)
     // This will prevent provider from changing if any thread is executing inside construct_udp()
     std::scoped_lock lock(_registryMutex);
 
-    spdlog::debug("udp_provider has been registered in udp_registry");
+    dist_logger()->debug("udp_provider has been registered in udp_registry");
 
     _udp_provider = providerFunc;
 }
@@ -142,7 +142,7 @@ void udp_registry::set_local_cache_dir(const std::filesystem::path& directory)
 {
     std::scoped_lock lock(_registryMutex);
 
-    spdlog::debug("cache has been set to: {}", directory.string());
+    dist_logger()->debug("cache has been set to: {}", directory.string());
 
     _local_cache = directory;
 }
@@ -162,7 +162,7 @@ std::optional<std::vector<std::byte>> udp_registry::get_lib_as_file(const std::s
 {
     std::scoped_lock lock(_registryMutex);
 
-    spdlog::trace("get_lib_as_file: {}", libName);
+    dist_logger()->trace("get_lib_as_file: {}", libName);
 
     if (!_is_lib_in_cache(libName))
     {
@@ -220,12 +220,12 @@ std::optional<std::vector<std::byte>> udp_registry::get_lib_as_file(const std::s
     }
     catch (const std::exception& e)
     {
-        spdlog::warn("Warning: error when attempting to load file: {}Err msg:{} Proceeding as if it doesn't exist.", libPath.string(), e.what());
+        dist_logger()->warn("Warning: error when attempting to load file: {}Err msg:{} Proceeding as if it doesn't exist.", libPath.string(), e.what());
         return std::nullopt;
     }
     catch (...)
     {
-        spdlog::warn("Warning: unknown error when attempting to load file: {} Proceeding as if it doesn't exist.", libPath.string());
+        dist_logger()->warn("Warning: unknown error when attempting to load file: {} Proceeding as if it doesn't exist.", libPath.string());
         return std::nullopt;
     }
 }
@@ -256,7 +256,7 @@ std::optional<std::string> udp_registry::get_lib_file_hash(const std::string& li
 
 void udp_registry::_save_lib_into_fs(const std::string& libName, const std::vector<std::byte>& libFile)
 {
-    spdlog::trace("udp_registry saving lib file: {}", libName);
+    dist_logger()->trace("udp_registry saving lib file: {}", libName);
 
     _write_lib_file(_get_lib_path(libName), libFile);
 }
@@ -310,7 +310,7 @@ bool udp_registry::_try_replace_lib_from_provider(const std::string& libName, co
     _delete_lib_file(libName);
     std::filesystem::rename(candidate, _get_lib_path(libName));
 
-    spdlog::debug("Replaced local '{}' with the controller's copy", libName);
+    dist_logger()->debug("Replaced local '{}' with the controller's copy", libName);
     return true;
 }
 
@@ -326,14 +326,14 @@ bool udp_registry::_is_loadable(const std::filesystem::path& libPath) const
     }
     catch (const std::exception& e)
     {
-        spdlog::debug("Candidate library {} is not loadable here: {}", libPath.string(), e.what());
+        dist_logger()->debug("Candidate library {} is not loadable here: {}", libPath.string(), e.what());
         return false;
     }
 }
 
 void udp_registry::_load_lib(const std::string& libName)
 {
-    spdlog::trace("udp_registry loading lib file: {}", libName);
+    dist_logger()->trace("udp_registry loading lib file: {}", libName);
 
     _lib_loaders.insert({libName, lib_loader<udp_base>{_get_lib_path(libName).string()}});
     _lib_loaders.at(libName).open_lib();
@@ -354,7 +354,7 @@ void udp_registry::_unload_lib(const std::string& libName)
     if (!_lib_loaders.contains(libName))
         return;
 
-    spdlog::trace("udp_registry unloading lib: {}", libName);
+    dist_logger()->trace("udp_registry unloading lib: {}", libName);
 
     try
     {
@@ -362,12 +362,12 @@ void udp_registry::_unload_lib(const std::string& libName)
     }
     catch (const std::exception& e)
     {
-        spdlog::error("Error: failed to unload lib: {} Err msg: {}", libName, e.what());
+        dist_logger()->error("Error: failed to unload lib: {} Err msg: {}", libName, e.what());
         throw;
     }
     catch (...)
     {
-        spdlog::error("Error: unknown failure unloading lib: {}", libName);
+        dist_logger()->error("Error: unknown failure unloading lib: {}", libName);
         throw;
     }
 
@@ -376,7 +376,7 @@ void udp_registry::_unload_lib(const std::string& libName)
 
 void udp_registry::_delete_lib_file(const std::string& libName)
 {
-    spdlog::trace("udp_registry deleting lib file: {}", libName);
+    dist_logger()->trace("udp_registry deleting lib file: {}", libName);
 
     const std::filesystem::path libPath = _get_lib_path(libName);
 
@@ -399,19 +399,19 @@ void udp_registry::_delete_lib_file(const std::string& libName)
         {
             if (!std::filesystem::remove(libPath))
             {
-                spdlog::error("Error: failed to delete file: {}", libPath.string());
+                dist_logger()->error("Error: failed to delete file: {}", libPath.string());
                 throw std::runtime_error("Failed to delete file: " + libPath.string());
             }
         }
     }
     catch (const std::exception& e)
     {
-        spdlog::error("Error: exception deleting file: {} Err msg: {}", libPath.string(), e.what());
+        dist_logger()->error("Error: exception deleting file: {} Err msg: {}", libPath.string(), e.what());
         throw;
     }
     catch (...)
     {
-        spdlog::error("Error: unknown exception deleting file: {}", libPath.string());
+        dist_logger()->error("Error: unknown exception deleting file: {}", libPath.string());
         throw;
     }
 }

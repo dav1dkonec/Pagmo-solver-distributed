@@ -5,6 +5,19 @@
 #include <filesystem>
 #include <vector>
 
+const std::shared_ptr<spdlog::logger>& dist_logger()
+{
+    static const std::shared_ptr<spdlog::logger> logger = []
+    {
+        auto created = std::make_shared<spdlog::logger>(
+            "distributed", std::make_shared<spdlog::sinks::null_sink_mt>());
+        created->set_level(spdlog::level::off);
+        return created;
+    }();
+
+    return logger;
+}
+
 void use_file_logger(const std::string& filePath, const bool enableConsole)
 {
     std::vector<spdlog::sink_ptr> sinks;
@@ -23,21 +36,17 @@ void use_file_logger(const std::string& filePath, const bool enableConsole)
     file_sink->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%l] [pid:%P] [tid:%t] %v");
     sinks.push_back(file_sink);
 
-    const auto logger = std::make_shared<spdlog::logger>("global_logger", sinks.begin(), sinks.end());
+    const auto& logger = dist_logger();
+    logger->sinks() = sinks;
     logger->set_level(spdlog::level::trace);
     logger->flush_on(spdlog::level::warn);
-
-    // set_default_logger() registers the logger itself, so an explicit
-    // register_logger() would throw on the second run.
-    spdlog::set_default_logger(logger);
 }
 
 void use_null_logger()
 {
-    const auto null_logger = std::make_shared<spdlog::logger>("null_logger",
-                                                              std::make_shared<spdlog::sinks::null_sink_mt>());
-    null_logger->set_level(spdlog::level::off);
-    spdlog::set_default_logger(null_logger);
+    const auto& logger = dist_logger();
+    logger->sinks() = {std::make_shared<spdlog::sinks::null_sink_mt>()};
+    logger->set_level(spdlog::level::off);
 }
 
 std::string generate_log_filename(const std::string& basePath)

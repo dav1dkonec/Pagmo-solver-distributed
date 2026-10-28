@@ -18,6 +18,7 @@ add_executable(unit_tests_distributed_solver
     logic/population_tools_test.cpp
     logic/settings_test.cpp
     utils/platform_utils_test.cpp
+    utils/logger_init_test.cpp
     
     # Phase 4: Core Domain Logic
     logic/worker_info_repository_test.cpp

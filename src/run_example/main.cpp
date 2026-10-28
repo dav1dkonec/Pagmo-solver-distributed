@@ -89,25 +89,25 @@ void run_controller(const std::string& address, const size_t expectedWorkerCount
     catch (const std::exception& e)
     {
         errMsg += e.what();
-        spdlog::critical("{}", errMsg);
+        dist_logger()->critical("{}", errMsg);
         throw std::runtime_error(errMsg);
     }
     catch (const std::string& e)
     {
         errMsg += e;
-        spdlog::critical("{}", errMsg);
+        dist_logger()->critical("{}", errMsg);
         throw std::runtime_error(errMsg);
     }
     catch (const char* e)
     {
         errMsg += e;
-        spdlog::critical("{}", errMsg);
+        dist_logger()->critical("{}", errMsg);
         throw std::runtime_error(errMsg);
     }
     catch (...)
     {
         errMsg += "unknown exception type";
-        spdlog::critical("{}", errMsg);
+        dist_logger()->critical("{}", errMsg);
         throw std::runtime_error(errMsg);
     }
 }
@@ -146,25 +146,25 @@ void run_worker(const std::string& address,
     catch (const std::exception& e)
     {
         errMsg += e.what();
-        spdlog::critical("{}", errMsg);
+        dist_logger()->critical("{}", errMsg);
         throw std::runtime_error(errMsg);
     }
     catch (const std::string& e)
     {
         errMsg += e;
-        spdlog::critical("{}", errMsg);
+        dist_logger()->critical("{}", errMsg);
         throw std::runtime_error(errMsg);
     }
     catch (const char* e)
     {
         errMsg += e;
-        spdlog::critical("{}", errMsg);
+        dist_logger()->critical("{}", errMsg);
         throw std::runtime_error(errMsg);
     }
     catch (...)
     {
         errMsg += "unknown exception type";
-        spdlog::critical("{}", errMsg);
+        dist_logger()->critical("{}", errMsg);
         throw std::runtime_error(errMsg);
     }
 }
@@ -412,8 +412,8 @@ int main(int argc, char* argv[])
     }
     catch (const std::exception& e)
     {
-        // Not spdlog: logger_control() nulls the default logger in its constructor,
-        // so anything thrown before enable_logging() would be discarded.
+        // Also on stderr, not just in the log: the log may be disabled, or the failure may
+        // have happened before logging was configured.
         std::cerr << "Fatal: " << e.what() << std::endl;
         return 2;
     }

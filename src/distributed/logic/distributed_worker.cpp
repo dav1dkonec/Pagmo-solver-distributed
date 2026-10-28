@@ -30,7 +30,7 @@ void distributed_worker::_handle_Worker_Socket_Msg()
 {
     auto [type, binary] = _workerSocket.receive();
 
-    spdlog::trace("[{}] from controller", static_cast<int>(type));
+    dist_logger()->trace("[{}] from controller", static_cast<int>(type));
 
     switch (type)
     {
@@ -48,7 +48,7 @@ void distributed_worker::_handle_Worker_Socket_Msg()
         break;
 
     default:
-        spdlog::warn("WARNING: controller sent unhandled message type: {}", static_cast<int>(type));
+        dist_logger()->warn("WARNING: controller sent unhandled message type: {}", static_cast<int>(type));
     }
 }
 
@@ -72,7 +72,7 @@ void distributed_worker::_handle_Thread_Socket_Msg()
         break;
 
     default:
-        spdlog::warn("WARNING: worker thread socket sent unhandled message type: {}", static_cast<int>(type));
+        dist_logger()->warn("WARNING: worker thread socket sent unhandled message type: {}", static_cast<int>(type));
     }
 }
 
@@ -82,14 +82,14 @@ void distributed_worker::_handle_Thread_Socket_Msg()
 
 void distributed_worker::_single_threaded_worker(const pagmo::algorithm& algo, const pagmo::population& pop)
 {
-    spdlog::debug("Single-threaded worker started... ");
+    dist_logger()->debug("Single-threaded worker started... ");
 
     distributed::dealer_socket output{this->_ctx};
     output.set_routing_id("worker_main");
     output.connect("inproc://thread_socket");
 
-    spdlog::debug("Running algorithm: {}", algo.get_name());
-    spdlog::debug("Population size: {}", pop.size());
+    dist_logger()->debug("Running algorithm: {}", algo.get_name());
+    dist_logger()->debug("Population size: {}", pop.size());
 
     const auto evolveStart = std::chrono::steady_clock::now();
     const pagmo::population new_pop = algo.evolve(pop);
@@ -106,12 +106,12 @@ unsigned distributed_worker::_compute_optimal_island_count()
     unsigned islandCount = std::thread::hardware_concurrency();
     if (islandCount == 0)
     {
-        spdlog::debug("Defaulting to 8 islands (Cannot detect core count)");
+        dist_logger()->debug("Defaulting to 8 islands (Cannot detect core count)");
         islandCount = 8;
     }
     else
     {
-        spdlog::debug("Using {} islands", islandCount);
+        dist_logger()->debug("Using {} islands", islandCount);
     }
     return islandCount;
 }
@@ -175,7 +175,7 @@ std::vector<pagmo::population> distributed_worker::_split_population_for_islands
 void distributed_worker::_archipelago_based_worker(pagmo::algorithm& algo, pagmo::population& pop,
                                                    const size_t archiCycleCount)
 {
-    spdlog::debug("Archipelago-based worker started... ");
+    dist_logger()->debug("Archipelago-based worker started... ");
 
     // 1) Set up socket for communicating with the parent thread
     distributed::dealer_socket output{this->_ctx};
@@ -195,20 +195,20 @@ void distributed_worker::_archipelago_based_worker(pagmo::algorithm& algo, pagmo
     size_t evolvedPopulation = 0;
     for (size_t i = 0; i < islandCount; ++i)
     {
-        spdlog::debug("Archipelago worker island #{} population size: {}", i + 1, islandPops[i].size());
+        dist_logger()->debug("Archipelago worker island #{} population size: {}", i + 1, islandPops[i].size());
         evolvedPopulation += islandPops[i].size();
         // Each island gets its portion of the population
         archi.push_back(pagmo::island{algo, islandPops[i]});
     }
 
     // 4) Run evolution on all islands in parallel
-    spdlog::debug("Using algorithm: {}", algo.get_name());
+    dist_logger()->debug("Using algorithm: {}", algo.get_name());
     archi.evolve(archiCycleCount);
     archi.wait_check();
 
     // 5) Merge individuals (and their fitness) from all islands into two vectors
     const auto [allPopulations, allFitnesses] = merge_populations(archi);
-    spdlog::trace("Size of allPopulations: {}", allPopulations.size());
+    dist_logger()->trace("Size of allPopulations: {}", allPopulations.size());
 
     // 6) Build a new population containing only the best POPULATION_SIZE individuals
     auto firstIslPop = archi[0].get_population();
@@ -248,11 +248,11 @@ void distributed_worker::_start_worker_thread(const std::vector<std::byte>& work
             }
             catch (const std::exception& e)
             {
-                spdlog::critical("Worker thread failed with exception: {}", e.what());
+                dist_logger()->critical("Worker thread failed with exception: {}", e.what());
                 throw e;
             }
 
-            spdlog::debug("Worker thread finished. ");
+            dist_logger()->debug("Worker thread finished. ");
         });
 }
 
@@ -369,11 +369,11 @@ std::optional<std::vector<std::byte>> distributed_worker::get_dll_from_controlle
 
     // 2) Block until controller eventually replies with DLL_BINARY
     std::tuple<MsgType, std::vector<std::byte>> receivedData{};
-    spdlog::debug("Worker waiting for DLL from controller... (Name: {})", lib_name);
+    dist_logger()->debug("Worker waiting for DLL from controller... (Name: {})", lib_name);
     receivedData = socket.receive();
     while (std::get<0>(receivedData) != MsgType::DLL_BINARY)
     {
-        spdlog::warn("Blocking until next message... Worker received incorrect reply to GET_DLL message: enum type:{}", static_cast<int>(std::get<0>(receivedData)));
+        dist_logger()->warn("Blocking until next message... Worker received incorrect reply to GET_DLL message: enum type:{}", static_cast<int>(std::get<0>(receivedData)));
         receivedData = socket.receive();
     }
 

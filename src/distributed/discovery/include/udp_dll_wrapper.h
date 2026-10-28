@@ -81,7 +81,7 @@ private:
         const std::string libFileHash = hash.has_value() ? hash.value() : _libFileHash;
 
         pagmo::detail::to_archive(ar, libFileHash, _libFileName, _udpPtr);
-        spdlog::trace("udp_dll_wrapper successfully saved");
+        dist_logger()->trace("udp_dll_wrapper successfully saved");
     }
 
     template <typename Archive>
@@ -99,7 +99,7 @@ private:
             // 3) Deserialize UDP, lib containing the UDP class should now be available in the address space of this process
             ar >> _udpPtr;
 
-            spdlog::trace("udp_dll_wrapper successfully loaded");
+            dist_logger()->trace("udp_dll_wrapper successfully loaded");
         }
         catch (const std::exception& e)
         {

@@ -4,7 +4,7 @@ void worker_info_repository::worker_joined(const std::string& workerID, worker_i
 {
     {
         std::scoped_lock lock(_mtx);
-        spdlog::info("Worker joined - info collected");
+        dist_logger()->info("Worker joined - info collected");
 
         if (!_workerRecords.contains(workerID))
         {
@@ -19,7 +19,7 @@ void worker_info_repository::worker_left(const std::string& workerID)
 {
     {
         std::scoped_lock lock(_mtx);
-        spdlog::info("Worker left - info collected");
+        dist_logger()->info("Worker left - info collected");
 
         _connectedWorkers.erase(workerID);
     }
@@ -29,7 +29,7 @@ void worker_info_repository::worker_left(const std::string& workerID)
 void worker_info_repository::worker_started_work(const std::string& workerID)
 {
     std::scoped_lock lock(_mtx);
-    spdlog::info("Worker started work - info collected");
+    dist_logger()->info("Worker started work - info collected");
 
     if (!_workerRecords.contains(workerID))
     {
@@ -44,7 +44,7 @@ void worker_info_repository::worker_finished_work(const std::string& workerID, c
                                                   const std::string& algoName, const uint64_t evolveTimeMs)
 {
     std::scoped_lock lock(_mtx);
-    spdlog::info("Worker finished work - info collected");
+    dist_logger()->info("Worker finished work - info collected");
 
     if (!_workerRecords.contains(workerID))
     {
@@ -65,14 +65,14 @@ void worker_info_repository::worker_finished_work(const std::string& workerID, c
     wInfo.statsByAlgorithm[algoName].evolveTime += evolveTimeMs;
     wInfo.statsByAlgorithm[algoName].processedPopulation += processedPopulation;
 
-    spdlog::debug("{} round-trip {} ms, of which {} ms computing", workerID, workTime, evolveTimeMs);
+    dist_logger()->debug("{} round-trip {} ms, of which {} ms computing", workerID, workTime, evolveTimeMs);
 }
 
 std::optional<worker_info> worker_info_repository::get_worker_info(
     const std::string& workerID)
 {
     std::scoped_lock lock(_mtx);
-    spdlog::trace("Worker info requested");
+    dist_logger()->trace("Worker info requested");
 
     const auto record = _workerRecords.find(workerID);
     if (record != _workerRecords.end())
@@ -101,7 +101,7 @@ size_t worker_info_repository::get_worker_count()
 void worker_info_repository::wait_until_worker_count(const size_t target)
 {
     std::unique_lock lock(_mtx);
-    spdlog::info("Waiting until {} workers connect...", target);
+    dist_logger()->info("Waiting until {} workers connect...", target);
 
     _cv.wait(lock, [&]
     {
@@ -112,7 +112,7 @@ void worker_info_repository::wait_until_worker_count(const size_t target)
 bool worker_info_repository::wait_until_worker_count(const size_t target, const std::chrono::milliseconds timeout)
 {
     std::unique_lock lock(_mtx);
-    spdlog::info("Waiting up to {} ms until {} workers connect...", timeout.count(), target);
+    dist_logger()->info("Waiting up to {} ms until {} workers connect...", timeout.count(), target);
 
     return _cv.wait_for(lock, timeout, [&]
     {

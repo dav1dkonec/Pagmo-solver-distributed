@@ -108,17 +108,17 @@ void distributed_island::run_evolve(pagmo::island& isl) const
 
         // 2) Allocate our algorithm and population to some worker node via controller
         _dealerSocket->set_routing_id(_islandId);
-        spdlog::debug("Running distributed island");
+        dist_logger()->debug("Running distributed island");
         _dealerSocket->connect("ipc://distributed_controller_islands_socket");
-        spdlog::debug("Distributed island connected");
+        dist_logger()->debug("Distributed island connected");
         _dealerSocket->send(MsgType::ALLOCATE_WORK,
                             work_container{initial_algo, initial_pop, _preferredWorkerId, _cycleCount}
         );
-        spdlog::debug("Distributed island allocate work sent");
+        dist_logger()->debug("Distributed island allocate work sent");
 
         // 3) Wait until controller returns results from worker
         auto [type, binary] = _dealerSocket->receive();
-        spdlog::debug("island received [{}] from controller", static_cast<int>(type));
+        dist_logger()->debug("island received [{}] from controller", static_cast<int>(type));
 
         if (type != MsgType::WORK_RESULTS)
         {
@@ -164,25 +164,25 @@ void distributed_island::run_evolve(pagmo::island& isl) const
     catch (const std::exception& e)
     {
         errMsg += e.what();
-        spdlog::critical("{}", errMsg);
+        dist_logger()->critical("{}", errMsg);
         throw std::runtime_error(errMsg);
     }
     catch (const std::string& e)
     {
         errMsg += e;
-        spdlog::critical("{}", errMsg);
+        dist_logger()->critical("{}", errMsg);
         throw std::runtime_error(errMsg);
     }
     catch (const char* e)
     {
         errMsg += e;
-        spdlog::critical("{}", errMsg);
+        dist_logger()->critical("{}", errMsg);
         throw std::runtime_error(errMsg);
     }
     catch (...)
     {
         errMsg += "unknown exception type";
-        spdlog::critical("{}", errMsg);
+        dist_logger()->critical("{}", errMsg);
         throw std::runtime_error(errMsg);
     }
 }
