@@ -23,6 +23,10 @@ class udp_dll_wrapper
     // This exists so worker can see if it has the same version of this file or no
     // Assigned value only in the "save" (serialization) function, as we don't use it anywhere else
     std::string _libFileHash;
+
+    // Hands the UDP its shared payload on first use; see udp_base::required_blob_key().
+    void _ensure_required_blob() const;
+
 public:
     //#####################################################################################
     //# PAGMO UDP public functions

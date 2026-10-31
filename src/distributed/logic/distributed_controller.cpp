@@ -6,6 +6,7 @@
 #include "vector_deserialize.h"
 #include "vector_istreambuf.h"
 #include "udp_registry.h"
+#include "blob_registry.h"
 
 //#####################################################################################
 //# Handling of socket messages
@@ -77,6 +78,18 @@ void distributed_controller::_handle_Workers_Socket_Msg()
             _workersSocket.send(workerId,
                                 MsgType::DLL_BINARY,
                                 dll_binary_container{dll_request.dll_name, file}
+            );
+        }
+        break;
+
+    case MsgType::GET_BLOB:
+        {
+            const auto request = vector_deserialize<get_blob_request>(binary);
+
+            // lookup, not fetch: the controller is the origin, it must not call a provider
+            _workersSocket.send(workerId,
+                                MsgType::BLOB_BINARY,
+                                blob_binary_container{request.blob_key, blob_registry::get().lookup(request.blob_key)}
             );
         }
         break;

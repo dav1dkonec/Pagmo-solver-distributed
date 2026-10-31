@@ -1,6 +1,8 @@
 #pragma once
 #include <any>
+#include <cstddef>
 #include <string>
+#include <vector>
 #include "pagmo/types.hpp"
 #include <pagmo/s11n.hpp>
 #include "pagmo/threading.hpp"
@@ -81,6 +83,29 @@ public:
     {
         throw std::runtime_error("set_seed() is not implemented by this UDP");
     }
+
+    //#####################################################################################
+    //# Optional large shared payload
+    //#####################################################################################
+
+    /**
+     * Key of a blob this UDP needs but does not carry in its own serialized form. Returning a
+     * non-empty key lets a payload shared by every work unit travel once per worker instead of
+     * inside every work_container. An empty key, the default, means the UDP is self-contained.
+     */
+    virtual std::string required_blob_key() const { return {}; }
+
+    /**
+     * True once the UDP holds the blob named by required_blob_key().
+     */
+    virtual bool has_required_blob() const { return true; }
+
+    /**
+     * Hands over the blob. Called before the first fitness() whenever has_required_blob() is
+     * false; the UDP decodes it into whatever form it needs.
+     */
+    virtual void accept_blob(const std::vector<std::byte>&) {}
+
 
     //#####################################################################################
     //# Other

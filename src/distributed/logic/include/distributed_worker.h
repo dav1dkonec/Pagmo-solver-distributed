@@ -115,6 +115,12 @@ public:
     */
     std::optional<std::vector<std::byte>> get_dll_from_controller(const std::string& lib_name);
 
+    /**
+     * Blocking request for a named blob held by the controller; the counterpart of
+     * get_dll_from_controller for data that is shared by every work unit.
+     */
+    std::optional<std::vector<std::byte>> get_blob_from_controller(const std::string& blob_key);
+
 protected:
     std::string get_default_log_name() const override
     {

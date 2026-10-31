@@ -47,6 +47,10 @@ void distributed_worker::_handle_Worker_Socket_Msg()
         _threadSocket.send("worker_dll_handler", MsgType::DLL_BINARY, binary);
         break;
 
+    case MsgType::BLOB_BINARY:
+        _threadSocket.send("worker_blob_handler", MsgType::BLOB_BINARY, binary);
+        break;
+
     default:
         dist_logger()->warn("WARNING: controller sent unhandled message type: {}", static_cast<int>(type));
     }
@@ -69,6 +73,11 @@ void distributed_worker::_handle_Thread_Socket_Msg()
         // This happens if the DLL is not available locally via udp_registry.
         // We thus forward it via workerSocket to controller, so it can process this request and respond with DLL_BINARY.
         _workerSocket.send(MsgType::GET_DLL, binary);
+        break;
+
+    case MsgType::GET_BLOB:
+        // Same relay as GET_DLL, for a payload the UDP needs but does not carry itself.
+        _workerSocket.send(MsgType::GET_BLOB, binary);
         break;
 
     default:
@@ -381,4 +390,25 @@ std::optional<std::vector<std::byte>> distributed_worker::get_dll_from_controlle
     auto dbc = vector_deserialize<dll_binary_container>(std::get<1>(receivedData));
 
     return dbc.dll_file;
+}
+
+std::optional<std::vector<std::byte>> distributed_worker::get_blob_from_controller(const std::string& blob_key)
+{
+    const auto myId = "worker_blob_handler";
+
+    distributed::dealer_socket socket{this->_ctx};
+    socket.set_routing_id(myId);
+    socket.connect("inproc://thread_socket");
+
+    socket.send(MsgType::GET_BLOB, get_blob_request{blob_key});
+
+    dist_logger()->debug("Worker waiting for blob from controller... (Key: {})", blob_key);
+    auto receivedData = socket.receive();
+    while (std::get<0>(receivedData) != MsgType::BLOB_BINARY)
+    {
+        dist_logger()->warn("Blocking until next message... Worker received incorrect reply to GET_BLOB message: enum type:{}", static_cast<int>(std::get<0>(receivedData)));
+        receivedData = socket.receive();
+    }
+
+    return vector_deserialize<blob_binary_container>(std::get<1>(receivedData)).blob_data;
 }

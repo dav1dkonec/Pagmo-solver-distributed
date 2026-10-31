@@ -1,4 +1,5 @@
 #include "udp_dll_wrapper.h"
+#include "blob_registry.h"
 #include "logger_init.h"
 
 #include <pagmo/problem.hpp>
@@ -7,8 +8,33 @@
 //# PAGMO UDP public functions
 //#####################################################################################
 
+void udp_dll_wrapper::_ensure_required_blob() const
+{
+    // Pagmo copies the problem per island and per thread, so several copies may arrive here;
+    // the registry caches, so only the first one reaches the controller.
+    if (!_udpPtr || _udpPtr->has_required_blob())
+    {
+        return;
+    }
+
+    const std::string key = _udpPtr->required_blob_key();
+    if (key.empty())
+    {
+        return;
+    }
+
+    const auto blob = blob_registry::get().fetch(key);
+    if (!blob)
+    {
+        throw std::runtime_error("Cannot obtain blob " + key + " required by " + _libFileName);
+    }
+
+    _udpPtr->accept_blob(*blob);
+}
+
 pagmo::vector_double udp_dll_wrapper::fitness(const pagmo::vector_double& dv) const
 {
+    _ensure_required_blob();
     return _udpPtr->fitness(dv);
 }
 

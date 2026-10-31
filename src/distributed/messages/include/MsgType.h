@@ -17,7 +17,74 @@ enum class MsgType
     ALLOCATE_WORK,
     WORK_RESULTS,
     GET_DLL,
-    DLL_BINARY
+    DLL_BINARY,
+    GET_BLOB,
+    BLOB_BINARY
+};
+
+// Request for a named read-only blob held by the controller. Used for payloads that are the
+// same for every work unit, so that they travel once per worker instead of once per unit.
+class get_blob_request
+{
+public:
+    std::string blob_key;
+
+    get_blob_request(const std::string& blob_key)
+        : blob_key(blob_key)
+    {
+    }
+
+    get_blob_request() = default;
+
+private:
+    friend class boost::serialization::access;
+
+    template <typename Archive>
+    void save(Archive& ar, unsigned) const
+    {
+        pagmo::detail::to_archive(ar, blob_key);
+    }
+
+    template <typename Archive>
+    void load(Archive& ar, unsigned)
+    {
+        pagmo::detail::from_archive(ar, blob_key);
+    }
+
+    BOOST_SERIALIZATION_SPLIT_MEMBER()
+};
+
+// Reply to get_blob_request; an empty optional means the controller does not have the key.
+class blob_binary_container
+{
+public:
+    std::string blob_key;
+    std::optional<std::vector<std::byte>> blob_data;
+
+    blob_binary_container(const std::string& blob_key, const std::optional<std::vector<std::byte>>& blob_data)
+        : blob_key(blob_key),
+          blob_data(blob_data)
+    {
+    }
+
+    blob_binary_container() = default;
+
+private:
+    friend class boost::serialization::access;
+
+    template <typename Archive>
+    void save(Archive& ar, unsigned) const
+    {
+        pagmo::detail::to_archive(ar, blob_key, blob_data);
+    }
+
+    template <typename Archive>
+    void load(Archive& ar, unsigned)
+    {
+        pagmo::detail::from_archive(ar, blob_key, blob_data);
+    }
+
+    BOOST_SERIALIZATION_SPLIT_MEMBER()
 };
 
 class work_container
