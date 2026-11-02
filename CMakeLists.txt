@@ -4,6 +4,10 @@ message(STATUS "Executing top-level CMakeLists.txt...")
 
 set(CMAKE_CXX_STANDARD 20)
 
+# These static libraries are also linked into shared modules, such as the UDP libraries of
+# dependent projects. ELF accepts that only for position-independent objects.
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
 # Add this so spdlog can use utf-8
 if (MSVC)
     add_compile_options(/utf-8)
