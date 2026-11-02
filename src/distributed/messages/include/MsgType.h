@@ -10,6 +10,40 @@
 
 #include "pagmo/algorithms/nsga2.hpp"
 
+// Boost 1.83, which current distributions still ship, serializes boost::optional but not
+// std::optional. A node may well build against an older Boost than the controller, so the flag
+// and the payload are written separately. Both directions must read the same number of items:
+// an archive is a stream, and a mismatch corrupts everything after it.
+template <typename Archive, typename T>
+void save_optional(Archive& ar, const std::optional<T>& value)
+{
+    const bool has_value = value.has_value();
+    pagmo::detail::to_archive(ar, has_value);
+
+    if (has_value)
+    {
+        pagmo::detail::to_archive(ar, *value);
+    }
+}
+
+template <typename Archive, typename T>
+void load_optional(Archive& ar, std::optional<T>& value)
+{
+    bool has_value = false;
+    pagmo::detail::from_archive(ar, has_value);
+
+    if (has_value)
+    {
+        T payload;
+        pagmo::detail::from_archive(ar, payload);
+        value = std::move(payload);
+    }
+    else
+    {
+        value.reset();
+    }
+}
+
 enum class MsgType
 {
     WORKER_JOIN,
@@ -75,33 +109,15 @@ private:
     template <typename Archive>
     void save(Archive& ar, unsigned) const
     {
-        // Same split as dll_binary_container: Boost 1.83 serializes boost::optional
-        // but not std::optional.
-        const bool has_data = blob_data.has_value();
-        pagmo::detail::to_archive(ar, blob_key, has_data);
-
-        if (has_data)
-        {
-            pagmo::detail::to_archive(ar, *blob_data);
-        }
+        pagmo::detail::to_archive(ar, blob_key);
+        save_optional(ar, blob_data);
     }
 
     template <typename Archive>
     void load(Archive& ar, unsigned)
     {
-        bool has_data = false;
-        pagmo::detail::from_archive(ar, blob_key, has_data);
-
-        if (has_data)
-        {
-            std::vector<std::byte> data;
-            pagmo::detail::from_archive(ar, data);
-            blob_data = std::move(data);
-        }
-        else
-        {
-            blob_data.reset();
-        }
+        pagmo::detail::from_archive(ar, blob_key);
+        load_optional(ar, blob_data);
     }
 
     BOOST_SERIALIZATION_SPLIT_MEMBER()
@@ -216,35 +232,15 @@ private:
     template <typename Archive>
     void save(Archive& ar, unsigned) const
     {
-        // My Debian 13 node ships Boost 1.83, which serializes boost::optional
-        // but not std::optional. Write the flag and the payload separately.
-        const bool has_file = dll_file.has_value();
-        pagmo::detail::to_archive(ar, dll_name, has_file);
-
-        if (has_file)
-        {
-            pagmo::detail::to_archive(ar, *dll_file);
-        }
+        pagmo::detail::to_archive(ar, dll_name);
+        save_optional(ar, dll_file);
     }
 
     template <typename Archive>
     void load(Archive& ar, unsigned)
     {
-        // Must mirror save(): an archive is a stream, a mismatched read count
-        // corrupts everything read after it.
-        bool has_file = false;
-        pagmo::detail::from_archive(ar, dll_name, has_file);
-
-        if (has_file)
-        {
-            std::vector<std::byte> file;
-            pagmo::detail::from_archive(ar, file);
-            dll_file = std::move(file);
-        }
-        else
-        {
-            dll_file.reset();
-        }
+        pagmo::detail::from_archive(ar, dll_name);
+        load_optional(ar, dll_file);
     }
 
     BOOST_SERIALIZATION_SPLIT_MEMBER()
