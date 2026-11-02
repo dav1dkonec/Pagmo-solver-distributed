@@ -26,28 +26,24 @@ void blob_registry::register_provider(const blob_provider& providerFunc)
 
 std::optional<std::vector<std::byte>> blob_registry::fetch(const std::string& key)
 {
-    blob_provider provider;
+    // The lock is held across the provider call, as in udp_registry: the provider owns a socket
+    // identity that only allows one request at a time, and it would otherwise be possible for
+    // two threads to transfer the same blob.
+    std::lock_guard<std::mutex> lock{_mutex};
 
+    const auto found = _blobs.find(key);
+    if (found != _blobs.end())
     {
-        std::lock_guard<std::mutex> lock{_mutex};
-
-        const auto found = _blobs.find(key);
-        if (found != _blobs.end())
-        {
-            return found->second;
-        }
-
-        provider = _provider;
+        return found->second;
     }
 
-    if (!provider)
+    if (!_provider)
     {
         dist_logger()->error("Blob {} is not held locally and no provider is registered", key);
         return std::nullopt;
     }
 
-    // Outside the lock: the provider talks to the controller and may block.
-    auto fetched = provider(key);
+    auto fetched = _provider(key);
     if (!fetched)
     {
         dist_logger()->error("The controller did not provide blob {}", key);
@@ -56,7 +52,6 @@ std::optional<std::vector<std::byte>> blob_registry::fetch(const std::string& ke
 
     dist_logger()->debug("Fetched blob {} from the controller, {} B", key, fetched->size());
 
-    std::lock_guard<std::mutex> lock{_mutex};
     _blobs.insert_or_assign(key, *fetched);
 
     return fetched;

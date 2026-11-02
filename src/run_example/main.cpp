@@ -4,6 +4,7 @@
 #include "distributed_worker.h"
 #include "udp_dll_wrapper.h"
 #include "udp_registry.h"
+#include "blob_registry.h"
 #include "pagmo/algorithms/de.hpp"
 #include "pagmo/algorithms/gaco.hpp"
 
@@ -140,6 +141,8 @@ void run_worker(const std::string& address,
         udp_registry::get().set_local_cache_dir(localCacheDir);
         udp_registry::get().register_udp_provider(
             [&worker](const std::string& libName) { return worker.get_dll_from_controller(libName); });
+        blob_registry::get().register_provider(
+            [&worker](const std::string& blobKey) { return worker.get_blob_from_controller(blobKey); });
         for (;;)
             worker.client_loop();
     }

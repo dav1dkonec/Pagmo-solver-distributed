@@ -75,13 +75,33 @@ private:
     template <typename Archive>
     void save(Archive& ar, unsigned) const
     {
-        pagmo::detail::to_archive(ar, blob_key, blob_data);
+        // Same split as dll_binary_container: Boost 1.83 serializes boost::optional
+        // but not std::optional.
+        const bool has_data = blob_data.has_value();
+        pagmo::detail::to_archive(ar, blob_key, has_data);
+
+        if (has_data)
+        {
+            pagmo::detail::to_archive(ar, *blob_data);
+        }
     }
 
     template <typename Archive>
     void load(Archive& ar, unsigned)
     {
-        pagmo::detail::from_archive(ar, blob_key, blob_data);
+        bool has_data = false;
+        pagmo::detail::from_archive(ar, blob_key, has_data);
+
+        if (has_data)
+        {
+            std::vector<std::byte> data;
+            pagmo::detail::from_archive(ar, data);
+            blob_data = std::move(data);
+        }
+        else
+        {
+            blob_data.reset();
+        }
     }
 
     BOOST_SERIALIZATION_SPLIT_MEMBER()
