@@ -10,10 +10,8 @@
 
 #include "pagmo/algorithms/nsga2.hpp"
 
-// Boost 1.83, which current distributions still ship, serializes boost::optional but not
-// std::optional. A node may well build against an older Boost than the controller, so the flag
-// and the payload are written separately. Both directions must read the same number of items:
-// an archive is a stream, and a mismatch corrupts everything after it.
+// Boost 1.83, still shipped by distributions, serializes boost::optional but not std::optional.
+// save and load must read the same item count: an archive is a stream.
 template <typename Archive, typename T>
 void save_optional(Archive& ar, const std::optional<T>& value)
 {
@@ -56,8 +54,7 @@ enum class MsgType
     BLOB_BINARY
 };
 
-// Request for a named read-only blob held by the controller. Used for payloads that are the
-// same for every work unit, so that they travel once per worker instead of once per unit.
+// Requests a read-only blob shared by every work unit, so it travels once per worker.
 class get_blob_request
 {
 public:

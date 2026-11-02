@@ -88,22 +88,14 @@ public:
     //# Optional large shared payload
     //#####################################################################################
 
-    /**
-     * Key of a blob this UDP needs but does not carry in its own serialized form. Returning a
-     * non-empty key lets a payload shared by every work unit travel once per worker instead of
-     * inside every work_container. An empty key, the default, means the UDP is self-contained.
-     */
+    // Blob this UDP needs but does not serialize; it then travels once per worker, not per
+    // work unit. An empty key, the default, means the UDP is self-contained.
     virtual std::string required_blob_key() const { return {}; }
 
-    /**
-     * True once the UDP holds the blob named by required_blob_key().
-     */
+    // True once the UDP holds the blob named by required_blob_key().
     virtual bool has_required_blob() const { return true; }
 
-    /**
-     * Hands over the blob. Called before the first fitness() whenever has_required_blob() is
-     * false; the UDP decodes it into whatever form it needs.
-     */
+    // Called before the first fitness() while has_required_blob() is false.
     virtual void accept_blob(const std::vector<std::byte>&) {}
 
 

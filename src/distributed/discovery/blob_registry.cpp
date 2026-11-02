@@ -26,9 +26,7 @@ void blob_registry::register_provider(const blob_provider& providerFunc)
 
 std::optional<std::vector<std::byte>> blob_registry::fetch(const std::string& key)
 {
-    // The lock is held across the provider call, as in udp_registry: the provider owns a socket
-    // identity that only allows one request at a time, and it would otherwise be possible for
-    // two threads to transfer the same blob.
+    // Held across the provider call, as in udp_registry: its socket identity serves one request.
     std::lock_guard<std::mutex> lock{_mutex};
 
     const auto found = _blobs.find(key);
@@ -59,8 +57,7 @@ std::optional<std::vector<std::byte>> blob_registry::fetch(const std::string& ke
 
 std::string blob_registry::make_key(const std::vector<std::byte>& data)
 {
-    // FNV-1a; the key only has to distinguish data sets within one run, not resist collisions
-    // chosen by an attacker.
+    // FNV-1a; distinguishes data sets within a run, not an attacker's chosen collisions.
     uint64_t hash = 1469598103934665603ull;
     for (const std::byte b : data)
     {
