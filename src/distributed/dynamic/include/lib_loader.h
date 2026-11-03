@@ -20,6 +20,8 @@
  * - The following functions are optional:
  *      - extern "C" DLL_PUBLIC void run_after_load();
  *          - gets executed during the first call to get_instance or clone_instance
+ *      - extern "C" DLL_PUBLIC void set_dist_log_sink(void (*sink)(int, const char*));
+ *          - receives the host's log sink right after the library is opened
  *
  * @tparam T The class contained within this library
  */
@@ -83,6 +85,17 @@ public:
         if (!(_handle = portable_dlopen(_pathToLib.c_str())))
         {
             throw std::runtime_error{error_msg()};
+        }
+    }
+
+    // The library's own logger instance is never configured, so it logs through the host's.
+    void install_log_sink(void (*sink)(int, const char*))
+    {
+        using installT = void (*)(void (*)(int, const char*));
+
+        if (const auto install = reinterpret_cast<installT>(portable_dlsym(_handle, "set_dist_log_sink")))
+        {
+            install(sink);
         }
     }
 

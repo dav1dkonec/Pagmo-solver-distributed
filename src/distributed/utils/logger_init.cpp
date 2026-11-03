@@ -18,6 +18,11 @@ const std::shared_ptr<spdlog::logger>& dist_logger()
     return logger;
 }
 
+extern "C" void dist_log_write(const int level, const char* message)
+{
+    dist_logger()->log(static_cast<spdlog::level::level_enum>(level), message);
+}
+
 void use_file_logger(const std::string& filePath, const bool enableConsole)
 {
     std::vector<spdlog::sink_ptr> sinks;

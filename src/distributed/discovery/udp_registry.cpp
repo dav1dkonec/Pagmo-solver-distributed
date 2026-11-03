@@ -337,6 +337,7 @@ void udp_registry::_load_lib(const std::string& libName)
 
     _lib_loaders.insert({libName, lib_loader<udp_base>{_get_lib_path(libName).string()}});
     _lib_loaders.at(libName).open_lib();
+    _lib_loaders.at(libName).install_log_sink(&dist_log_write);
 }
 
 bool udp_registry::_is_lib_in_cache(const std::string& libName) const
