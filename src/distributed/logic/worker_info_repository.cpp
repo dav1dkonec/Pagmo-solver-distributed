@@ -1,5 +1,28 @@
 #include "worker_info_repository.h"
 
+#include "number_utils.h"
+
+namespace
+{
+    // Weight of the newest sample; the previous average halves after about two more units.
+    constexpr double Throughput_Smoothing = 0.3;
+}
+
+void work_stats::add_sample(const uint64_t workTimeMs, const uint64_t evolveTimeMs, const uint64_t population)
+{
+    workTime += workTimeMs;
+    evolveTime += evolveTimeMs;
+    processedPopulation += population;
+
+    const double sample = safe_divide(population, evolveTimeMs);
+
+    // The first sample has nothing to age against, so it seeds the average.
+    throughput = samples == 0
+                     ? sample
+                     : Throughput_Smoothing * sample + (1 - Throughput_Smoothing) * throughput;
+    ++samples;
+}
+
 void worker_info_repository::worker_joined(const std::string& workerID, worker_info info)
 {
     {
@@ -57,15 +80,11 @@ void worker_info_repository::worker_finished_work(const std::string& workerID, c
     const auto endTime = std::chrono::high_resolution_clock::now();
     const auto workTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
 
-    wInfo.totalStats.workTime += workTime;
-    wInfo.totalStats.evolveTime += evolveTimeMs;
-    wInfo.totalStats.processedPopulation += processedPopulation;
+    wInfo.totalStats.add_sample(workTime, evolveTimeMs, processedPopulation);
+    wInfo.statsByAlgorithm[algoName].add_sample(workTime, evolveTimeMs, processedPopulation);
 
-    wInfo.statsByAlgorithm[algoName].workTime += workTime;
-    wInfo.statsByAlgorithm[algoName].evolveTime += evolveTimeMs;
-    wInfo.statsByAlgorithm[algoName].processedPopulation += processedPopulation;
-
-    dist_logger()->debug("{} round-trip {} ms, of which {} ms computing", workerID, workTime, evolveTimeMs);
+    dist_logger()->debug("{} round-trip {} ms, of which {} ms computing, throughput {:.3f} ind/ms",
+                         workerID, workTime, evolveTimeMs, wInfo.totalStats.throughput);
 }
 
 std::optional<worker_info> worker_info_repository::get_worker_info(

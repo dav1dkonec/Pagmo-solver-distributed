@@ -81,19 +81,13 @@ std::vector<std::tuple<size_t, size_t, std::string, const pagmo::algorithm&>> di
             {
                 const auto& wInfo = repo.get_worker_info(workerId);
 
-                const double wTotalAvg = safe_divide(
-                    wInfo->totalStats.processedPopulation,
-                    wInfo->totalStats.workTime
-                );
+                // Computation time only; the round trip also holds the one-off blob transfer.
+                const double wTotalAvg = wInfo->totalStats.throughput;
 
                 double wAlgoAvg = 0;
                 if (wInfo->statsByAlgorithm.contains(algoName))
                 {
-                    const auto& algoStats = wInfo->statsByAlgorithm.at(algoName);
-                    wAlgoAvg = safe_divide(
-                        algoStats.processedPopulation,
-                        algoStats.workTime
-                    );
+                    wAlgoAvg = wInfo->statsByAlgorithm.at(algoName).throughput;
                 }
 
                 if (wTotalAvg >= bestTotalAvg)

@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <pagmo/s11n.hpp>
 #include <boost/serialization/unordered_map.hpp>
+#include <boost/serialization/version.hpp>
 #include "logger_init.h"
 
 struct work_stats
@@ -25,6 +26,13 @@ struct work_stats
     // Individuals the worker really evolved, as reported by the worker
     uint64_t processedPopulation = 0;
 
+    // Individuals per millisecond of computation, aged so that recent units dominate
+    double throughput = 0;
+    uint64_t samples = 0;
+
+    // Folds one finished unit into the cumulative totals and into throughput
+    void add_sample(uint64_t workTimeMs, uint64_t evolveTimeMs, uint64_t population);
+
 private:
     //####################################
     //# BOOST SERIALIZE
@@ -33,13 +41,22 @@ private:
     friend class boost::serialization::access;
 
     template <typename Archive>
-    void serialize(Archive& ar, unsigned)
+    void serialize(Archive& ar, const unsigned version)
     {
         ar & BOOST_SERIALIZATION_NVP(workTime);
         ar & BOOST_SERIALIZATION_NVP(evolveTime);
         ar & BOOST_SERIALIZATION_NVP(processedPopulation);
+
+        // Files written before throughput existed load with it at zero and re-learn it.
+        if (version >= 1)
+        {
+            ar & BOOST_SERIALIZATION_NVP(throughput);
+            ar & BOOST_SERIALIZATION_NVP(samples);
+        }
     }
 };
+
+BOOST_CLASS_VERSION(work_stats, 1)
 
 struct worker_info
 {
