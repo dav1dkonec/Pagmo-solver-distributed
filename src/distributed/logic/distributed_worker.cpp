@@ -110,7 +110,8 @@ void distributed_worker::_single_threaded_worker(const pagmo::algorithm& algo, c
 }
 
 
-unsigned distributed_worker::_compute_optimal_island_count()
+unsigned distributed_worker::_compute_optimal_island_count(const size_t totalPopSize,
+                                                          const size_t minIslandPopSize)
 {
     unsigned islandCount = std::thread::hardware_concurrency();
     if (islandCount == 0)
@@ -118,10 +119,13 @@ unsigned distributed_worker::_compute_optimal_island_count()
         dist_logger()->debug("Defaulting to 8 islands (Cannot detect core count)");
         islandCount = 8;
     }
-    else
-    {
-        dist_logger()->debug("Using {} islands", islandCount);
-    }
+
+    // More islands than the assignment can fill at the minimum island size would inflate it,
+    // which would silently discard the controller's capability-based split.
+    const auto fillable = static_cast<unsigned>(std::max<size_t>(1, totalPopSize / minIslandPopSize));
+    islandCount = std::min(islandCount, fillable);
+
+    dist_logger()->debug("Using {} islands for {} assigned individuals", islandCount, totalPopSize);
     return islandCount;
 }
 
@@ -196,7 +200,7 @@ void distributed_worker::_archipelago_based_worker(pagmo::algorithm& algo, pagmo
     const auto evolveStart = std::chrono::steady_clock::now();
 
     // 2) Get island count based on hardware core count
-    const unsigned islandCount = _compute_optimal_island_count();
+    const unsigned islandCount = _compute_optimal_island_count(pop.size(), _minIslandPopSize);
 
     // 3) Construct and initialize islands with our algorithm and population (pop includes problem)
     pagmo::archipelago archi{pagmo::fully_connected{}};

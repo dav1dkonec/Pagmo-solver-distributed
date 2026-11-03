@@ -70,10 +70,13 @@ class distributed_worker : public logger_control
     size_t _minIslandPopSize;
 
     /**
-     * Helper function to figure out the optimal island count for this archipelago worker based on hardware core count
+     * Helper function to figure out the optimal island count for this archipelago worker, based on the hardware
+     * core count and capped by what the assigned population can fill at the algorithms' minimum island size
+     * @param totalPopSize Individuals the controller assigned to this worker
+     * @param minIslandPopSize Smallest population the algorithms accept
      * @return Optimal number of islands
      */
-    static unsigned _compute_optimal_island_count();
+    static unsigned _compute_optimal_island_count(size_t totalPopSize, size_t minIslandPopSize);
 
     /**
      * Helper function to split the input population among multiple islands
