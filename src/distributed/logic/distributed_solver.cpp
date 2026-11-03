@@ -21,6 +21,64 @@ void distributed_solver::_set_island_hints(pagmo::island& isl) const
     }
 }
 
+void distributed_solver::_calibrate_unmeasured_workers(const pagmo::problem& problem,
+                                                       const std::vector<pagmo::algorithm>& algorithms,
+                                                       const size_t populationSize)
+{
+    if (algorithms.empty())
+    {
+        return;
+    }
+
+    auto& repo = _controller.get_worker_info_repository();
+    const std::unordered_set<std::string> connectedWorkers = repo.get_connected_workers();
+
+    std::vector<std::string> unmeasured;
+    for (const auto& workerId : connectedWorkers)
+    {
+        const auto info = repo.get_worker_info(workerId);
+        if (info && info->totalStats.samples == 0)
+        {
+            unmeasured.push_back(workerId);
+        }
+    }
+
+    if (unmeasured.empty())
+    {
+        return;
+    }
+
+    // One population for all of them; throughput of unequal units is not comparable.
+    const pagmo::population probe{problem, populationSize};
+
+    std::vector<pagmo::island> probeIslands;
+    probeIslands.reserve(unmeasured.size());
+    for (const auto& workerId : unmeasured)
+    {
+        dist_logger()->debug("Calibrating {} with {} individuals", workerId, populationSize);
+        probeIslands.emplace_back(distributed_island{workerId, 1}, algorithms.front(), probe);
+    }
+
+    // All at once: the islands evolve on their own threads, so this costs one unit of wall clock.
+    for (auto& island : probeIslands)
+    {
+        island.evolve(1);
+    }
+
+    for (size_t i = 0; i < probeIslands.size(); ++i)
+    {
+        try
+        {
+            probeIslands.at(i).wait_check();
+        }
+        catch (const std::exception& e)
+        {
+            dist_logger()->warn("Calibration of {} failed: {}", unmeasured.at(i), e.what());
+        }
+    }
+}
+
+
 std::vector<std::tuple<size_t, size_t, std::string, const pagmo::algorithm&>> distributed_solver::_generate_work_plan(
     const size_t islandCount, const size_t populationSize, const std::vector<pagmo::algorithm>& algorithms, const size_t
     minIslandPopSize)
@@ -178,6 +236,9 @@ void distributed_solver::evolve(const pagmo::problem& problem, const std::vector
     const size_t currentWorkerCount = _controller.get_worker_info_repository().get_worker_count();
     // If there are more workers connected to controller than what was expected, we increase the island count
     const size_t optimalIslandCount = std::max(currentWorkerCount, _expectedWorkerCount);
+
+    // Without a throughput sample per worker the plan below can only divide the work evenly
+    _calibrate_unmeasured_workers(problem, algorithms, minIslandPopSize);
 
     // Work plan ensures correct worker load balancing
     const auto& workPlan = _generate_work_plan(optimalIslandCount, populationSize, algorithms, minIslandPopSize);
