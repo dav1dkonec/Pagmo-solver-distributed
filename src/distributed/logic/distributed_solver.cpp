@@ -233,12 +233,13 @@ void distributed_solver::evolve(const pagmo::problem& problem, const std::vector
     // Archipelago using fully connected topology between the islands
     _archipelago = pagmo::archipelago{pagmo::fully_connected{}};
 
-    const size_t currentWorkerCount = _controller.get_worker_info_repository().get_worker_count();
-    // If there are more workers connected to controller than what was expected, we increase the island count
-    const size_t optimalIslandCount = std::max(currentWorkerCount, _expectedWorkerCount);
-
     // Without a throughput sample per worker the plan below can only divide the work evenly
     _calibrate_unmeasured_workers(problem, algorithms, minIslandPopSize);
+
+    // One island per worker that is still here once calibration is over. Asking for more is what
+    // makes the plan fall back to an equal split that ignores how fast each node actually is.
+    const size_t optimalIslandCount =
+        std::max<size_t>(1, _controller.get_worker_info_repository().get_worker_count());
 
     // Work plan ensures correct worker load balancing
     const auto& workPlan = _generate_work_plan(optimalIslandCount, populationSize, algorithms, minIslandPopSize);
