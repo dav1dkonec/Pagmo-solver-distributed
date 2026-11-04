@@ -1,6 +1,7 @@
 #include "udp_registry.h"
 #include "logger_init.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -53,17 +54,17 @@ void udp_registry::initialize_udp(const std::string& name, const std::optional<s
         return;
     }
 
-    // Check if the lib exists in local cache, if yes, load it
-    if (_is_lib_in_cache(name))
+    // Load a local copy if there is one, be it cached or this process' own build
+    if (const auto localLib = _find_local_lib(name))
     {
-        _load_lib(name);
+        _load_lib(name, localLib.value());
         return;
     }
 
     // Nothing local to fall back on, so the peer's artifact has to be loadable here
     if (_install_lib_from_provider(name))
     {
-        _load_lib(name);
+        _load_lib(name, _get_lib_path(name));
         return;
     }
 
@@ -84,17 +85,17 @@ std::shared_ptr<udp_base> udp_registry::construct_udp(const std::string& name, c
         return _lib_loaders.at(name).get_instance(params);
     }
 
-    // Check if the lib exists in local cache, if yes, load it and return instance
-    if (_is_lib_in_cache(name))
+    // Load a local copy if there is one, be it cached or this process' own build
+    if (const auto localLib = _find_local_lib(name))
     {
-        _load_lib(name);
+        _load_lib(name, localLib.value());
         return _lib_loaders.at(name).get_instance(params);
     }
 
     // Nothing local to fall back on, so the peer's artifact has to be loadable here
     if (_install_lib_from_provider(name))
     {
-        _load_lib(name);
+        _load_lib(name, _get_lib_path(name));
         return _lib_loaders.at(name).get_instance(params);
     }
 
@@ -137,6 +138,19 @@ void udp_registry::set_local_cache_dir(const std::filesystem::path& directory)
     _local_cache = directory;
 }
 
+void udp_registry::add_lib_search_dir(const std::filesystem::path& directory)
+{
+    std::scoped_lock lock(_registryMutex);
+
+    // Callers can run more than once per process, so keep the list free of duplicates
+    if (std::find(_lib_search_dirs.begin(), _lib_search_dirs.end(), directory) != _lib_search_dirs.end())
+        return;
+
+    dist_logger()->debug("library search dir has been added: {}", directory.string());
+
+    _lib_search_dirs.push_back(directory);
+}
+
 void udp_registry::use_in_memory_cache(bool value)
 {
     std::scoped_lock lock(_registryMutex);
@@ -154,13 +168,19 @@ std::optional<std::vector<std::byte>> udp_registry::get_lib_as_file(const std::s
 
     dist_logger()->trace("get_lib_as_file: {}", libName);
 
-    // If the file doesn't exist locally, fetch it; caching it here prevents repeated fetching
-    if (!_is_lib_in_cache(libName) && !_install_lib_from_provider(libName))
+    auto localLib = _find_local_lib(libName);
+
+    // If there is no local copy, fetch it; caching it here prevents repeated fetching
+    if (!localLib.has_value())
     {
-        return std::nullopt;
+        if (!_install_lib_from_provider(libName))
+        {
+            return std::nullopt;
+        }
+        localLib = _get_lib_path(libName);
     }
 
-    const std::filesystem::path libPath = _get_lib_path(libName);
+    const std::filesystem::path libPath = localLib.value();
 
     // Check our LRU buffer if this file isn't already cached in-memory
     if (_use_in_memory_cache && _libFilesBuffer.contains(libPath.string()))
@@ -313,11 +333,11 @@ bool udp_registry::_is_loadable(const std::filesystem::path& libPath) const
     }
 }
 
-void udp_registry::_load_lib(const std::string& libName)
+void udp_registry::_load_lib(const std::string& libName, const std::filesystem::path& libPath)
 {
-    dist_logger()->trace("udp_registry loading lib file: {}", libName);
+    dist_logger()->trace("udp_registry loading lib file: {}", libPath.string());
 
-    _lib_loaders.insert({libName, lib_loader<udp_base>{_get_lib_path(libName).string()}});
+    _lib_loaders.insert({libName, lib_loader<udp_base>{libPath.string()}});
     _lib_loaders.at(libName).open_lib();
     _lib_loaders.at(libName).install_log_sink(&dist_log_write);
 }
@@ -325,6 +345,26 @@ void udp_registry::_load_lib(const std::string& libName)
 bool udp_registry::_is_lib_in_cache(const std::string& libName) const
 {
     return std::filesystem::exists(_get_lib_path(libName));
+}
+
+std::optional<std::filesystem::path> udp_registry::_find_local_lib(const std::string& libName) const
+{
+    // Cache first: it only ever holds an artifact that already proved loadable here
+    if (_is_lib_in_cache(libName))
+    {
+        return _get_lib_path(libName);
+    }
+
+    for (const auto& dir : _lib_search_dirs)
+    {
+        const auto candidate = dir / std::string{libName + portable_dll_extension()};
+        if (std::filesystem::exists(candidate))
+        {
+            return candidate;
+        }
+    }
+
+    return std::nullopt;
 }
 
 std::filesystem::path udp_registry::_get_lib_path(const std::string& libName) const

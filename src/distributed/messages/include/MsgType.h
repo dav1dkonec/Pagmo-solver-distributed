@@ -42,8 +42,8 @@ void load_optional(Archive& ar, std::optional<T>& value)
     }
 }
 
-// WORKER_JOIN and WORKER_LEAVE are reserved for ZeroMQ's own hello and disconnect messages,
-// which cannot be multipart; router_socket::receive() reads no payload frame for them.
+// ZeroMQ itself sends WORKER_JOIN and WORKER_LEAVE as a single frame, so receive() reads no
+// payload for them. Never reuse them for our own messages, it would desynchronize the socket.
 enum class MsgType
 {
     WORKER_JOIN,

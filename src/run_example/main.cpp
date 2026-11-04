@@ -344,6 +344,9 @@ int main(int argc, char* argv[])
         use_null_logger();
     }
 
+    // Prefer a library built right next to this binary over fetching one from the controller
+    udp_registry::get().add_lib_search_dir(std::filesystem::path{argv[0]}.parent_path());
+
     // Run controller / worker
     try
     {

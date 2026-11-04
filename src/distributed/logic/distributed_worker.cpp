@@ -69,7 +69,7 @@ void distributed_worker::_handle_Thread_Socket_Msg()
         break;
 
     case MsgType::WORK_FAILED:
-        // Worker thread could not serve this unit, so hand it back instead of leaving it hanging
+        // Thread gave up on the unit, hand it back for reallocation
         _workerThread.join();
         _workerSocket.send(MsgType::WORK_FAILED, binary);
         break;
@@ -254,8 +254,7 @@ void distributed_worker::_start_worker_thread(const std::vector<std::byte>& work
         {
             try
             {
-                // Inside the try: deserializing the work container loads the UDP library, which
-                // throws here when no artifact for this platform is available
+                // Deserialization loads the UDP library, so it can throw
                 auto wct = vector_deserialize<work_container>(workData);
 
                 if (_workerMode == worker_mode::ARCHIPELAGO_BASED)
@@ -269,8 +268,7 @@ void distributed_worker::_start_worker_thread(const std::vector<std::byte>& work
             }
             catch (const std::exception& e)
             {
-                // Escaping this thread would terminate the process. Leaving instead lets the
-                // controller reallocate the unit, which it already does for a dropped worker.
+                // An exception leaving this thread would terminate the process
                 dist_logger()->critical("Worker thread failed with exception: {}", e.what());
 
                 distributed::dealer_socket output{this->_ctx};

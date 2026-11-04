@@ -8,6 +8,7 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 #include <any>
 
 #include "hash_cache.h"
@@ -65,6 +66,12 @@ public:
 
     void set_local_cache_dir(const std::filesystem::path& directory);
 
+    /**
+     * Adds a read-only directory searched for libraries before any is fetched from a peer.
+     * Meant for the directory holding this process' own build.
+     */
+    void add_lib_search_dir(const std::filesystem::path& directory);
+
     void use_in_memory_cache(bool value);
 
     std::optional<std::vector<std::byte>> get_lib_as_file(const std::string& libName);
@@ -95,6 +102,9 @@ private:
     // new build on the peer is still retried.
     std::unordered_set<std::string> _rejectedRemoteHashes{};
 
+    // Searched after the cache. Never written to, so a peer cannot overwrite a local build.
+    std::vector<std::filesystem::path> _lib_search_dirs{};
+
     void _save_lib_into_fs(const std::string& libName, const std::vector<std::byte>& libFile);
 
     void _write_lib_file(const std::filesystem::path& libPath, const std::vector<std::byte>& libFile);
@@ -113,9 +123,15 @@ private:
      */
     bool _is_loadable(const std::filesystem::path& libPath) const;
 
-    void _load_lib(const std::string& libName);
+    void _load_lib(const std::string& libName, const std::filesystem::path& libPath);
 
     bool _is_lib_in_cache(const std::string& libName) const;
+
+    /**
+     * Looks for the library in the cache and then in the search directories
+     * @return Path to the first existing copy, or nullopt if there is none
+     */
+    std::optional<std::filesystem::path> _find_local_lib(const std::string& libName) const;
 
     /**
      * Returns a full path to a library file located in local cache (including extension)
