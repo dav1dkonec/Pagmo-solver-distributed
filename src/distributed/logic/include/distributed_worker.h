@@ -124,6 +124,13 @@ public:
      */
     std::optional<std::vector<std::byte>> get_blob_from_controller(const std::string& blob_key);
 
+    /**
+     * Offers our build of a library to the controller, which catalogues it for nodes of this
+     * platform that have none. Expects no reply.
+     */
+    void put_dll_to_controller(const std::string& lib_name, const std::string& platform_tag,
+                               const std::vector<std::byte>& lib_file);
+
 protected:
     std::string get_default_log_name() const override
     {

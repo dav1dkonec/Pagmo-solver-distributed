@@ -20,7 +20,12 @@ void udp_registry::initialize_udp(const std::string& name, const std::map<std::s
     // share a hash, so anything else would report a new version on every message we receive
     const auto peerHash = libFileHashes.find(platform_tag());
 
-    if (peerHash != libFileHashes.end())
+    if (peerHash == libFileHashes.end())
+    {
+        // The peer serves nothing for this platform, so offer it our build to hand to the next node
+        _publish_lib_to_peer(name);
+    }
+    else
     {
         // Computing our hash fetches the artifact first if we have none, see get_lib_as_file()
         const auto hash = get_lib_file_hash(name);
@@ -123,6 +128,39 @@ void udp_registry::register_udp_provider(const udp_provider& providerFunc)
     dist_logger()->debug("udp_provider has been registered in udp_registry");
 
     _udp_provider = providerFunc;
+}
+
+void udp_registry::register_udp_publisher(const udp_publisher& publisherFunc)
+{
+    std::scoped_lock lock(_registryMutex);
+
+    dist_logger()->debug("udp_publisher has been registered in udp_registry");
+
+    _udp_publisher = publisherFunc;
+}
+
+bool udp_registry::store_lib_for_platform(const std::string& libName, const std::string& platformTag,
+                                          const std::vector<std::byte>& libFile)
+{
+    std::scoped_lock lock(_registryMutex);
+
+    const auto extension = dll_extension_for_tag(platformTag);
+    if (extension.empty() || _is_own_platform(platformTag))
+    {
+        return false;
+    }
+
+    const auto entry = _local_cache / platformTag / std::string{libName + extension};
+    if (std::filesystem::exists(entry))
+    {
+        return false;
+    }
+
+    std::filesystem::create_directories(entry.parent_path());
+    _write_lib_file(entry, libFile);
+
+    dist_logger()->info("Catalogued a peer's build of '{}' for platform {}", libName, platformTag);
+    return true;
 }
 
 void udp_registry::set_local_cache_dir(const std::filesystem::path& directory)
@@ -372,6 +410,27 @@ bool udp_registry::_is_loadable(const std::filesystem::path& libPath) const
         dist_logger()->debug("Candidate library {} is not loadable here: {}", libPath.string(), e.what());
         return false;
     }
+}
+
+void udp_registry::_publish_lib_to_peer(const std::string& libName)
+{
+    if (!_udp_publisher || _publishedLibs.contains(libName))
+    {
+        return;
+    }
+
+    // Marked even when there is nothing to offer, so this runs once and not per message
+    _publishedLibs.insert(libName);
+
+    const auto libFile = get_lib_as_file(libName);
+    if (!libFile.has_value())
+    {
+        return;
+    }
+
+    dist_logger()->debug("Offering our build of '{}' for platform {}", libName, platform_tag());
+
+    _udp_publisher(libName, platform_tag(), libFile.value());
 }
 
 void udp_registry::_load_lib(const std::string& libName, const std::filesystem::path& libPath)

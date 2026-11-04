@@ -65,6 +65,22 @@ public:
      */
     void register_udp_provider(const udp_provider& providerFunc);
 
+    using udp_publisher = std::function<void(const std::string& libName, const std::string& platformTag,
+                                             const std::vector<std::byte>& libFile)>;
+
+    /**
+     * Registers a function which offers our build of a library to a peer that has none for us
+     */
+    void register_udp_publisher(const udp_publisher& publisherFunc);
+
+    /**
+     * Stores a peer's build as the catalogue entry for its platform. An existing entry is never
+     * replaced, so a peer cannot substitute an artifact this node already serves.
+     * @return true if the entry is now stored
+     */
+    bool store_lib_for_platform(const std::string& libName, const std::string& platformTag,
+                                const std::vector<std::byte>& libFile);
+
     void set_local_cache_dir(const std::filesystem::path& directory);
 
     /**
@@ -109,6 +125,10 @@ private:
 
     // Lambda which returns the DLL / shared library file as an array of bytes
     udp_provider _udp_provider{};
+
+    // Lambda which sends our build to a peer, and the libraries already offered to it
+    udp_publisher _udp_publisher{};
+    std::unordered_set<std::string> _publishedLibs{};
 
     // Cache for the get_lib_file_hash() function, this prevents repeated re-computing of hashes
     hash_cache _hash_cache{};
@@ -156,6 +176,11 @@ private:
                                                                 const std::string& platformTag) const;
 
     bool _is_own_platform(const std::string& platformTag) const;
+
+    /**
+     * Offers our build of the library to the peer, at most once per library
+     */
+    void _publish_lib_to_peer(const std::string& libName);
 
     /**
      * Returns a full path to a library file located in local cache (including extension)

@@ -141,6 +141,12 @@ void run_worker(const std::string& address,
         udp_registry::get().set_local_cache_dir(localCacheDir);
         udp_registry::get().register_udp_provider(
             [&worker](const std::string& libName) { return worker.get_dll_from_controller(libName); });
+        udp_registry::get().register_udp_publisher(
+            [&worker](const std::string& libName, const std::string& platformTag,
+                      const std::vector<std::byte>& libFile)
+            {
+                worker.put_dll_to_controller(libName, platformTag, libFile);
+            });
         blob_registry::get().register_provider(
             [&worker](const std::string& blobKey) { return worker.get_blob_from_controller(blobKey); });
         for (;;)

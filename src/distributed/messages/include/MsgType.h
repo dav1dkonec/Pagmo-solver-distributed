@@ -54,7 +54,8 @@ enum class MsgType
     DLL_BINARY,
     GET_BLOB,
     BLOB_BINARY,
-    WORK_FAILED
+    WORK_FAILED,
+    PUT_DLL
 };
 
 // Requests a read-only blob shared by every work unit, so it travels once per worker.
@@ -206,6 +207,42 @@ private:
     void load(Archive& ar, unsigned)
     {
         pagmo::detail::from_archive(ar, dll_name, platform);
+    }
+
+    BOOST_SERIALIZATION_SPLIT_MEMBER()
+};
+
+// Offers a build of the library for a platform the peer has no artifact for
+class put_dll_request
+{
+public:
+    std::string dll_name;
+    std::string platform;
+    std::vector<std::byte> dll_file;
+
+    put_dll_request(const std::string& dll_name, const std::string& platform,
+                    const std::vector<std::byte>& dll_file)
+        : dll_name(dll_name),
+          platform(platform),
+          dll_file(dll_file)
+    {
+    }
+
+    put_dll_request() = default;
+
+private:
+    friend class boost::serialization::access;
+
+    template <typename Archive>
+    void save(Archive& ar, unsigned) const
+    {
+        pagmo::detail::to_archive(ar, dll_name, platform, dll_file);
+    }
+
+    template <typename Archive>
+    void load(Archive& ar, unsigned)
+    {
+        pagmo::detail::from_archive(ar, dll_name, platform, dll_file);
     }
 
     BOOST_SERIALIZATION_SPLIT_MEMBER()

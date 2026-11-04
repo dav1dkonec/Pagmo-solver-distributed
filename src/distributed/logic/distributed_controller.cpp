@@ -106,6 +106,20 @@ void distributed_controller::_handle_Workers_Socket_Msg()
         }
         break;
 
+    case MsgType::PUT_DLL:
+        {
+            const auto request = vector_deserialize<put_dll_request>(binary);
+
+            // The artifact is for a platform we cannot load, so it can only be taken on trust;
+            // an entry we already serve is never replaced
+            if (udp_registry::get().store_lib_for_platform(request.dll_name, request.platform, request.dll_file))
+            {
+                dist_logger()->info("Worker {} supplied '{}' for platform {}", workerId, request.dll_name,
+                                    request.platform);
+            }
+        }
+        break;
+
     case MsgType::GET_BLOB:
         {
             const auto request = vector_deserialize<get_blob_request>(binary);

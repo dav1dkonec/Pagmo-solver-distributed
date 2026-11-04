@@ -87,6 +87,11 @@ void distributed_worker::_handle_Thread_Socket_Msg()
         _workerSocket.send(MsgType::GET_BLOB, binary);
         break;
 
+    case MsgType::PUT_DLL:
+        // Relay in the opposite direction: our build goes into the controller's catalogue
+        _workerSocket.send(MsgType::PUT_DLL, binary);
+        break;
+
     default:
         dist_logger()->warn("WARNING: worker thread socket sent unhandled message type: {}", static_cast<int>(type));
     }
@@ -382,6 +387,16 @@ distributed_worker::~distributed_worker()
 //#####################################################################################
 //# Other public member functions
 //#####################################################################################
+
+void distributed_worker::put_dll_to_controller(const std::string& lib_name, const std::string& platform_tag,
+                                               const std::vector<std::byte>& lib_file)
+{
+    distributed::dealer_socket socket{this->_ctx};
+    socket.set_routing_id("worker_dll_publisher");
+    socket.connect("inproc://thread_socket");
+
+    socket.send(MsgType::PUT_DLL, put_dll_request{lib_name, platform_tag, lib_file});
+}
 
 std::optional<std::vector<std::byte>> distributed_worker::get_dll_from_controller(const std::string& lib_name)
 {
