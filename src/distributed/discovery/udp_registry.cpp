@@ -10,41 +10,37 @@
 //# Public member functions
 //#####################################################################################
 
-void udp_registry::initialize_udp(const std::string& name, const std::optional<std::string>& libFileHash)
+void udp_registry::initialize_udp(const std::string& name, const std::map<std::string, std::string>& libFileHashes)
 {
     std::scoped_lock lock(_registryMutex);
 
     dist_logger()->trace("initializing udp library: {}", name);
 
-    // If a file hash was provided, we need to check if we have the same file version
-    // (udp_dll_wrapper calls this each time it deserializes itself - i.e. each time worker receives data)
-    if (libFileHash.has_value())
+    // Only the entry for our own platform can be compared; artifacts of two platforms never
+    // share a hash, so anything else would report a new version on every message we receive
+    const auto peerHash = libFileHashes.find(platform_tag());
+
+    if (peerHash != libFileHashes.end())
     {
-        // This function uses get_lib_as_file() to get the file and then compute hash,
-        // which means that it'll first try to get it from a local cache, and only then
-        // request the file from the controller
+        // Computing our hash fetches the artifact first if we have none, see get_lib_as_file()
         const auto hash = get_lib_file_hash(name);
         if (!hash.has_value())
         {
-            // Either the peer does not have the file, or its artifact does not load here
             throw std::runtime_error("Error: cannot initialize udp: " + name
                                      + ", no artifact loadable on this platform is available.");
         }
 
-        if (hash != libFileHash.value())
+        // The peer's copy is authoritative, but only discard a working library once its
+        // replacement proves loadable here
+        if (hash != peerHash->second && !_install_lib_from_provider(name, peerHash->second))
         {
-            // The peer's copy is authoritative, but a binary built for another platform
-            // cannot be loaded here. Only discard a working library once its replacement works.
-            if (!_install_lib_from_provider(name, libFileHash.value()))
-            {
-                // No provider means this node is the controller, which serves libraries
-                // instead of fetching them - expected, not a problem.
-                const auto level = _udp_provider ? spdlog::level::warn : spdlog::level::debug;
-                dist_logger()->log(level,
-                            "Keeping the local build of '{}': the peer's artifact (hash {}) is not "
-                            "loadable on this platform, local hash is {}",
-                            name, libFileHash.value(), hash.value());
-            }
+            // No provider means this node is the controller, which serves libraries
+            // instead of fetching them - expected, not a problem.
+            const auto level = _udp_provider ? spdlog::level::warn : spdlog::level::debug;
+            dist_logger()->log(level,
+                        "Keeping the local build of '{}': the peer's artifact (hash {}) is not "
+                        "loadable on this platform, local hash is {}",
+                        name, peerHash->second, hash.value());
         }
     }
 
@@ -234,9 +230,10 @@ std::optional<std::vector<std::byte>> udp_registry::get_lib_as_file(const std::s
     }
 }
 
-std::optional<std::string> udp_registry::get_lib_file_hash(const std::string& libName)
+std::optional<std::string> udp_registry::get_lib_file_hash(const std::string& libName,
+                                                           const std::string& platformTag)
 {
-    const auto file = get_lib_as_file(libName);
+    const auto file = get_lib_as_file(libName, platformTag);
 
     // Return nullopt if lib file doesn't exist
     if (!file.has_value())
@@ -244,14 +241,52 @@ std::optional<std::string> udp_registry::get_lib_file_hash(const std::string& li
         return std::nullopt;
     }
 
+    // Our own artifact keeps the plain name, so that _delete_lib_file() still finds its hash
+    const std::string cacheKey = _is_own_platform(platformTag) ? libName : platformTag + "/" + libName;
+
     // Use cached value if possible
-    if (_hash_cache.has_file(libName))
+    if (_hash_cache.has_file(cacheKey))
     {
-        return _hash_cache.get_file_hash(libName);
+        return _hash_cache.get_file_hash(cacheKey);
     }
 
     // Compute hash and return it
-    return _hash_cache.hash_file(libName, file.value());
+    return _hash_cache.hash_file(cacheKey, file.value());
+}
+
+std::map<std::string, std::string> udp_registry::get_lib_file_hashes(const std::string& libName)
+{
+    std::scoped_lock lock(_registryMutex);
+
+    std::map<std::string, std::string> hashes{};
+
+    if (const auto own = get_lib_file_hash(libName); own.has_value())
+    {
+        hashes.emplace(platform_tag(), own.value());
+    }
+
+    if (!std::filesystem::exists(_local_cache))
+    {
+        return hashes;
+    }
+
+    // Every cache subdirectory named after a platform we know is a catalogue entry
+    for (const auto& entry : std::filesystem::directory_iterator{_local_cache})
+    {
+        if (!entry.is_directory())
+            continue;
+
+        const auto tag = entry.path().filename().string();
+        if (dll_extension_for_tag(tag).empty())
+            continue;
+
+        if (const auto hash = get_lib_file_hash(libName, tag); hash.has_value())
+        {
+            hashes.emplace(tag, hash.value());
+        }
+    }
+
+    return hashes;
 }
 
 //#####################################################################################

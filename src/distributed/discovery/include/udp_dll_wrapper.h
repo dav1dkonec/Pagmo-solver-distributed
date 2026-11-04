@@ -1,7 +1,10 @@
 #pragma once
 #include <iostream>
+#include <map>
 #include <memory>
 #include <any>
+
+#include <boost/serialization/map.hpp>
 
 #include "udp_base.h"
 #include "pagmo/types.hpp"
@@ -20,9 +23,9 @@ class udp_dll_wrapper
 
     std::string _libFileName;
 
-    // This exists so worker can see if it has the same version of this file or no
+    // Lets a peer of any platform see whether its copy of this file is still the current one.
     // Assigned value only in the "save" (serialization) function, as we don't use it anywhere else
-    std::string _libFileHash;
+    std::map<std::string, std::string> _libFileHashes;
 
     // Hands the UDP its shared payload on first use; see udp_base::required_blob_key().
     void _ensure_required_blob() const;
@@ -80,11 +83,14 @@ private:
     template <typename Archive>
     void save(Archive& ar, unsigned) const
     {
-        const auto hash = udp_registry::get().get_lib_file_hash(_libFileName);
         // Put it into a temporary var, we can't modify the field itself because this function is const
-        const std::string libFileHash = hash.has_value() ? hash.value() : _libFileHash;
+        auto libFileHashes = udp_registry::get().get_lib_file_hashes(_libFileName);
+        if (libFileHashes.empty())
+        {
+            libFileHashes = _libFileHashes;
+        }
 
-        pagmo::detail::to_archive(ar, libFileHash, _libFileName, _udpPtr);
+        pagmo::detail::to_archive(ar, libFileHashes, _libFileName, _udpPtr);
         dist_logger()->trace("udp_dll_wrapper successfully saved");
     }
 
@@ -93,12 +99,12 @@ private:
     {
         try
             {
-            // 1) Deserialize _libFileHash and _libFileName first
-            ar >> _libFileHash;
+            // 1) Deserialize _libFileHashes and _libFileName first
+            ar >> _libFileHashes;
             ar >> _libFileName;
 
             // 2) Attempt to load the dynamic library of this UDP
-            udp_registry::get().initialize_udp(_libFileName, _libFileHash);
+            udp_registry::get().initialize_udp(_libFileName, _libFileHashes);
 
             // 3) Deserialize UDP, lib containing the UDP class should now be available in the address space of this process
             ar >> _udpPtr;

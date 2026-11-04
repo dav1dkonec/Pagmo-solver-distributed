@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <map>
 #include <mutex>
 #include <optional>
 #include <queue>
@@ -36,9 +37,9 @@ public:
     /**
      * Loads the dynamic library without constructing any object
      * @param name Name of the UDP's library
-     * @param libFileHash
+     * @param libFileHashes Hash of the peer's artifact per platform tag, used to spot a new version
      */
-    void initialize_udp(const std::string& name, const std::optional<std::string>& libFileHash);
+    void initialize_udp(const std::string& name, const std::map<std::string, std::string>& libFileHashes);
 
     /**
      * Constructs a UDP, which is contained within some dynamic library
@@ -82,7 +83,15 @@ public:
     std::optional<std::vector<std::byte>> get_lib_as_file(const std::string& libName,
                                                           const std::string& platformTag = {});
 
-    std::optional<std::string> get_lib_file_hash(const std::string& libName);
+    std::optional<std::string> get_lib_file_hash(const std::string& libName,
+                                                 const std::string& platformTag = {});
+
+    /**
+     * Hashes every platform this node can serve the library for, so that a peer of any platform
+     * can tell whether its own copy is still the current one
+     * @return Map of platform tag to hash
+     */
+    std::map<std::string, std::string> get_lib_file_hashes(const std::string& libName);
 private:
     // Recursive so public functions can call each other (one thread can lock it multiple times)
     std::recursive_mutex  _registryMutex{};
