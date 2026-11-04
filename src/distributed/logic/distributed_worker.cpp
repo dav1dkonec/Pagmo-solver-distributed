@@ -68,6 +68,12 @@ void distributed_worker::_handle_Thread_Socket_Msg()
         _workerSocket.send(MsgType::WORK_RESULTS, binary);
         break;
 
+    case MsgType::WORKER_LEAVE:
+        // Worker thread could not serve this unit, so hand it back instead of leaving it hanging
+        _workerThread.join();
+        _workerSocket.send(MsgType::WORKER_LEAVE, binary);
+        break;
+
     case MsgType::GET_DLL:
         // Worker thread requests a DLL, which needs to be obtained from the controller.
         // This happens if the DLL is not available locally via udp_registry.
@@ -246,10 +252,12 @@ void distributed_worker::_start_worker_thread(const std::vector<std::byte>& work
     _workerThread = std::thread(
         [this, workData]()
         {
-            auto wct = vector_deserialize<work_container>(workData);
-
             try
             {
+                // Inside the try: deserializing the work container loads the UDP library, which
+                // throws here when no artifact for this platform is available
+                auto wct = vector_deserialize<work_container>(workData);
+
                 if (_workerMode == worker_mode::ARCHIPELAGO_BASED)
                 {
                     _archipelago_based_worker(wct.algo, wct.pop, wct.cycleCount);
@@ -261,8 +269,15 @@ void distributed_worker::_start_worker_thread(const std::vector<std::byte>& work
             }
             catch (const std::exception& e)
             {
+                // Escaping this thread would terminate the process. Leaving instead lets the
+                // controller reallocate the unit, which it already does for a dropped worker.
                 dist_logger()->critical("Worker thread failed with exception: {}", e.what());
-                throw e;
+
+                distributed::dealer_socket output{this->_ctx};
+                output.set_routing_id("worker_main");
+                output.connect("inproc://thread_socket");
+                output.send(MsgType::WORKER_LEAVE);
+                return;
             }
 
             dist_logger()->debug("Worker thread finished. ");

@@ -100,11 +100,13 @@ private:
     void _write_lib_file(const std::filesystem::path& libPath, const std::vector<std::byte>& libFile);
 
     /**
-     * Fetches the library from the provider and replaces the local copy, but only if the fetched
-     * file can actually be loaded by this process
-     * @return true if the local copy was replaced
+     * Fetches the library from the provider and installs it as the local copy, but only if the
+     * fetched file can actually be loaded by this process. An existing copy is kept on failure.
+     * @param remoteHash Hash the peer reported, if known; used to not re-fetch a rejected artifact
+     * @return true if the local copy is now the fetched one
      */
-    bool _try_replace_lib_from_provider(const std::string& libName, const std::string& remoteHash);
+    bool _install_lib_from_provider(const std::string& libName,
+                                    const std::optional<std::string>& remoteHash = std::nullopt);
 
     /**
      * Returns true if the file at this path can be loaded as a dynamic library here

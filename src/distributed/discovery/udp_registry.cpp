@@ -33,7 +33,7 @@ void udp_registry::initialize_udp(const std::string& name, const std::optional<s
         {
             // The peer's copy is authoritative, but a binary built for another platform
             // cannot be loaded here. Only discard a working library once its replacement works.
-            if (!_try_replace_lib_from_provider(name, libFileHash.value()))
+            if (!_install_lib_from_provider(name, libFileHash.value()))
             {
                 // No provider means this node is the controller, which serves libraries
                 // instead of fetching them - expected, not a problem.
@@ -59,20 +59,15 @@ void udp_registry::initialize_udp(const std::string& name, const std::optional<s
         return;
     }
 
-    // If lib is not loaded or present in cache, try to get it via provider
-    if (_udp_provider)
+    // Nothing local to fall back on, so the peer's artifact has to be loadable here
+    if (_install_lib_from_provider(name))
     {
-        const auto libFile = _udp_provider(name);
-        if (libFile.has_value())
-        {
-            // The lib file was found and was passed to us as vector of bytes
-            _save_lib_into_fs(name, libFile.value());
-            _load_lib(name);
-            return;
-        }
+        _load_lib(name);
+        return;
     }
 
-    throw std::runtime_error("Error: cannot initialize udp: " + name + ", this dynamic library was not found.");
+    throw std::runtime_error("Error: cannot initialize udp: " + name
+                             + ", no artifact loadable on this platform is available.");
 }
 
 std::shared_ptr<udp_base> udp_registry::construct_udp(const std::string& name, const std::any& params)
@@ -95,21 +90,15 @@ std::shared_ptr<udp_base> udp_registry::construct_udp(const std::string& name, c
         return _lib_loaders.at(name).get_instance(params);
     }
 
-    // If lib is not loaded or present in cache, try to get it via provider
-    if (_udp_provider)
+    // Nothing local to fall back on, so the peer's artifact has to be loadable here
+    if (_install_lib_from_provider(name))
     {
-        const auto libFile = _udp_provider(name);
-        if (libFile.has_value())
-        {
-            // The lib file was found and was passed to us as vector of bytes
-            _save_lib_into_fs(name, libFile.value());
-            _load_lib(name);
-            // The loader should now be ready to construct an instance
-            return _lib_loaders.at(name).get_instance(params);
-        }
+        _load_lib(name);
+        return _lib_loaders.at(name).get_instance(params);
     }
 
-    throw std::runtime_error("Error: cannot construct udp: " + name + ", this dynamic library was not found.");
+    throw std::runtime_error("Error: cannot construct udp: " + name
+                             + ", no artifact loadable on this platform is available.");
 }
 
 std::shared_ptr<udp_base> udp_registry::clone_udp(const std::shared_ptr<udp_base>& other)
@@ -164,21 +153,9 @@ std::optional<std::vector<std::byte>> udp_registry::get_lib_as_file(const std::s
 
     dist_logger()->trace("get_lib_as_file: {}", libName);
 
-    if (!_is_lib_in_cache(libName))
+    // If the file doesn't exist locally, fetch it; caching it here prevents repeated fetching
+    if (!_is_lib_in_cache(libName) && !_install_lib_from_provider(libName))
     {
-        // If the file doesn't exist locally, we can try using udp provider
-        if (_udp_provider)
-        {
-            const auto libFile = _udp_provider(libName);
-
-            // Save it into the fs too to prevent repeated fetching from controller
-            if (libFile.has_value())
-            {
-                _save_lib_into_fs(libName, libFile.value());
-            }
-
-            return libFile;
-        }
         return std::nullopt;
     }
 
@@ -277,11 +254,12 @@ void udp_registry::_write_lib_file(const std::filesystem::path& libPath, const s
         throw std::runtime_error("Error: Failed write to file " + libPath.string());
 }
 
-bool udp_registry::_try_replace_lib_from_provider(const std::string& libName, const std::string& remoteHash)
+bool udp_registry::_install_lib_from_provider(const std::string& libName,
+                                              const std::optional<std::string>& remoteHash)
 {
     // initialize_udp runs on every deserialization, so without this check we would re-fetch the
     // same unusable artifact for every message this worker receives
-    if (_rejectedRemoteHashes.contains(remoteHash))
+    if (remoteHash.has_value() && _rejectedRemoteHashes.contains(remoteHash.value()))
         return false;
 
     if (!_udp_provider)
@@ -301,16 +279,19 @@ bool udp_registry::_try_replace_lib_from_provider(const std::string& libName, co
     if (!_is_loadable(candidate))
     {
         std::filesystem::remove(candidate);
-        _rejectedRemoteHashes.insert(remoteHash);
+        if (remoteHash.has_value())
+        {
+            _rejectedRemoteHashes.insert(remoteHash.value());
+        }
         return false;
     }
 
-    // The replacement works, so it's now safe to drop the old one
+    // The fetched artifact works, so it's now safe to drop whatever was here before
     _unload_lib(libName);
     _delete_lib_file(libName);
     std::filesystem::rename(candidate, _get_lib_path(libName));
 
-    dist_logger()->debug("Replaced local '{}' with the controller's copy", libName);
+    dist_logger()->debug("Installed the peer's copy of '{}'", libName);
     return true;
 }
 
