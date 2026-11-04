@@ -42,6 +42,8 @@ void load_optional(Archive& ar, std::optional<T>& value)
     }
 }
 
+// WORKER_JOIN and WORKER_LEAVE are reserved for ZeroMQ's own hello and disconnect messages,
+// which cannot be multipart; router_socket::receive() reads no payload frame for them.
 enum class MsgType
 {
     WORKER_JOIN,
@@ -51,7 +53,8 @@ enum class MsgType
     GET_DLL,
     DLL_BINARY,
     GET_BLOB,
-    BLOB_BINARY
+    BLOB_BINARY,
+    WORK_FAILED
 };
 
 // Requests a read-only blob shared by every work unit, so it travels once per worker.

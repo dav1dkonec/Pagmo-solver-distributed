@@ -25,8 +25,9 @@ void udp_registry::initialize_udp(const std::string& name, const std::optional<s
         const auto hash = get_lib_file_hash(name);
         if (!hash.has_value())
         {
-            // This should not happen - if controller sent us this file name, it should have the file ready
-            throw std::runtime_error("Error: cannot initialize udp: " + name + ", this dynamic library was not found.");
+            // Either the peer does not have the file, or its artifact does not load here
+            throw std::runtime_error("Error: cannot initialize udp: " + name
+                                     + ", no artifact loadable on this platform is available.");
         }
 
         if (hash != libFileHash.value())

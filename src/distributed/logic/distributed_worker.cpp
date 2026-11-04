@@ -68,10 +68,10 @@ void distributed_worker::_handle_Thread_Socket_Msg()
         _workerSocket.send(MsgType::WORK_RESULTS, binary);
         break;
 
-    case MsgType::WORKER_LEAVE:
+    case MsgType::WORK_FAILED:
         // Worker thread could not serve this unit, so hand it back instead of leaving it hanging
         _workerThread.join();
-        _workerSocket.send(MsgType::WORKER_LEAVE, binary);
+        _workerSocket.send(MsgType::WORK_FAILED, binary);
         break;
 
     case MsgType::GET_DLL:
@@ -276,7 +276,7 @@ void distributed_worker::_start_worker_thread(const std::vector<std::byte>& work
                 distributed::dealer_socket output{this->_ctx};
                 output.set_routing_id("worker_main");
                 output.connect("inproc://thread_socket");
-                output.send(MsgType::WORKER_LEAVE);
+                output.send(MsgType::WORK_FAILED);
                 return;
             }
 

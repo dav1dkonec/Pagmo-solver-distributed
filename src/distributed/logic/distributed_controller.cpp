@@ -68,6 +68,24 @@ void distributed_controller::_handle_Workers_Socket_Msg()
         }
         break;
 
+    case MsgType::WORK_FAILED:
+        {
+            dist_logger()->warn("Worker {} could not serve its work unit", workerId);
+
+            // Keep it out of the free pool: a worker that cannot run this problem at all would
+            // just fail every unit it is handed
+            _freeWorkersPool.erase(workerId);
+            _settings().workerInfo.worker_left(workerId);
+
+            if (_workAllocationMap.contains(workerId))
+            {
+                const auto [islandId, workData] = _workAllocationMap.at(workerId);
+                _workAllocationMap.erase(workerId);
+                _allocate_island_work(islandId, workData);
+            }
+        }
+        break;
+
     case MsgType::GET_DLL:
         {
             // Deserialize the DLL request so we can get the name of this DLL
