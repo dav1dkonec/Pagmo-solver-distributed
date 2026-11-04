@@ -88,3 +88,50 @@ inline constexpr std::string portable_dll_extension()
 #error "Dynamic library extension is not defined for this platform"
 #endif
 }
+
+/*
+ * Identifies the build target of this process as "<os>-<arch>". Library artifacts are catalogued
+ * under it, so that a node is served a binary it can actually load.
+ */
+inline std::string platform_tag()
+{
+#if defined(WIN32)
+    const std::string os = "windows";
+#elif defined(__APPLE__)
+    const std::string os = "darwin";
+#elif defined(__linux__)
+    const std::string os = "linux";
+#else
+    const std::string os = "unknown";
+#endif
+
+#if defined(__aarch64__) || defined(_M_ARM64)
+    const std::string arch = "arm64";
+#elif defined(__x86_64__) || defined(_M_X64)
+    const std::string arch = "x86_64";
+#elif defined(__arm__) || defined(_M_ARM)
+    const std::string arch = "arm";
+#elif defined(__i386__) || defined(_M_IX86)
+    const std::string arch = "x86";
+#else
+    const std::string arch = "unknown";
+#endif
+
+    return os + "-" + arch;
+}
+
+/*
+ * Dynamic library extension used by the given platform tag, which is not necessarily ours.
+ * Empty if the tag names an OS we do not know.
+ */
+inline std::string dll_extension_for_tag(const std::string& platformTag)
+{
+    if (platformTag.starts_with("windows-"))
+        return ".dll";
+    if (platformTag.starts_with("darwin-"))
+        return ".dylib";
+    if (platformTag.starts_with("linux-"))
+        return ".so";
+
+    return {};
+}

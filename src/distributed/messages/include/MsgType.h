@@ -174,13 +174,16 @@ private:
 };
 
 
+// The platform tag says which build of the library the sender can load, see platform_tag()
 class get_dll_request
 {
 public:
     std::string dll_name;
+    std::string platform;
 
-    get_dll_request(const std::string& dll_name)
-        : dll_name(dll_name)
+    get_dll_request(const std::string& dll_name, const std::string& platform)
+        : dll_name(dll_name),
+          platform(platform)
     {
     }
 
@@ -196,13 +199,13 @@ private:
     template <typename Archive>
     void save(Archive& ar, unsigned) const
     {
-        pagmo::detail::to_archive(ar, dll_name);
+        pagmo::detail::to_archive(ar, dll_name, platform);
     }
 
     template <typename Archive>
     void load(Archive& ar, unsigned)
     {
-        pagmo::detail::from_archive(ar, dll_name);
+        pagmo::detail::from_archive(ar, dll_name, platform);
     }
 
     BOOST_SERIALIZATION_SPLIT_MEMBER()

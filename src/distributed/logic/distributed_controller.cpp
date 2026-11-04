@@ -91,8 +91,14 @@ void distributed_controller::_handle_Workers_Socket_Msg()
             // Deserialize the DLL request so we can get the name of this DLL
             const auto dll_request = vector_deserialize<get_dll_request>(binary);
 
-            // Get the DLL file via udp_registry (returns std::optional, Worker's udp_registry will throw if it's nullopt)
-            const auto file = udp_registry::get().get_lib_as_file(dll_request.dll_name);
+            // Pick the build for the requester's platform, not ours; nullopt makes the worker fail
+            // its unit, which the controller then reallocates
+            const auto file = udp_registry::get().get_lib_as_file(dll_request.dll_name, dll_request.platform);
+            if (!file.has_value())
+            {
+                dist_logger()->warn("No '{}' artifact catalogued for platform {}", dll_request.dll_name,
+                                    dll_request.platform);
+            }
             _workersSocket.send(workerId,
                                 MsgType::DLL_BINARY,
                                 dll_binary_container{dll_request.dll_name, file}

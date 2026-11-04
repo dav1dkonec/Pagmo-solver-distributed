@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <iostream>
 
+#include "defines.h"
 #include "population_tools.h"
 #include "vector_deserialize.h"
 #include "pagmo/archipelago.hpp"
@@ -391,7 +392,7 @@ std::optional<std::vector<std::byte>> distributed_worker::get_dll_from_controlle
     socket.connect("inproc://thread_socket");
 
     // 1) Send the request
-    socket.send(MsgType::GET_DLL, get_dll_request{lib_name});
+    socket.send(MsgType::GET_DLL, get_dll_request{lib_name, platform_tag()});
 
     // 2) Block until controller eventually replies with DLL_BINARY
     std::tuple<MsgType, std::vector<std::byte>> receivedData{};

@@ -162,25 +162,31 @@ void udp_registry::use_in_memory_cache(bool value)
     _use_in_memory_cache = value;
 }
 
-std::optional<std::vector<std::byte>> udp_registry::get_lib_as_file(const std::string& libName)
+std::optional<std::vector<std::byte>> udp_registry::get_lib_as_file(const std::string& libName,
+                                                                    const std::string& platformTag)
 {
     std::scoped_lock lock(_registryMutex);
 
-    dist_logger()->trace("get_lib_as_file: {}", libName);
+    dist_logger()->trace("get_lib_as_file: {} for platform {}", libName, platformTag);
 
-    auto localLib = _find_local_lib(libName);
+    auto foundLib = _find_lib_for_platform(libName, platformTag);
 
-    // If there is no local copy, fetch it; caching it here prevents repeated fetching
-    if (!localLib.has_value())
+    // Only our own build can be fetched; a peer cannot produce one for a platform we lack
+    if (!foundLib.has_value() && _is_own_platform(platformTag))
     {
         if (!_install_lib_from_provider(libName))
         {
             return std::nullopt;
         }
-        localLib = _get_lib_path(libName);
+        foundLib = _get_lib_path(libName);
     }
 
-    const std::filesystem::path libPath = localLib.value();
+    if (!foundLib.has_value())
+    {
+        return std::nullopt;
+    }
+
+    const std::filesystem::path libPath = foundLib.value();
 
     // Check our LRU buffer if this file isn't already cached in-memory
     if (_use_in_memory_cache && _libFilesBuffer.contains(libPath.string()))
@@ -345,6 +351,35 @@ void udp_registry::_load_lib(const std::string& libName, const std::filesystem::
 bool udp_registry::_is_lib_in_cache(const std::string& libName) const
 {
     return std::filesystem::exists(_get_lib_path(libName));
+}
+
+bool udp_registry::_is_own_platform(const std::string& platformTag) const
+{
+    return platformTag.empty() || platformTag == platform_tag();
+}
+
+std::optional<std::filesystem::path> udp_registry::_find_lib_for_platform(const std::string& libName,
+                                                                          const std::string& platformTag) const
+{
+    if (_is_own_platform(platformTag))
+    {
+        return _find_local_lib(libName);
+    }
+
+    const auto extension = dll_extension_for_tag(platformTag);
+    if (extension.empty())
+    {
+        return std::nullopt;
+    }
+
+    // Artifacts built elsewhere live in a per-platform directory of the cache
+    const auto entry = _local_cache / platformTag / std::string{libName + extension};
+    if (!std::filesystem::exists(entry))
+    {
+        return std::nullopt;
+    }
+
+    return entry;
 }
 
 std::optional<std::filesystem::path> udp_registry::_find_local_lib(const std::string& libName) const

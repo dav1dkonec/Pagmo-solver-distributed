@@ -74,7 +74,13 @@ public:
 
     void use_in_memory_cache(bool value);
 
-    std::optional<std::vector<std::byte>> get_lib_as_file(const std::string& libName);
+    /**
+     * Reads the library as bytes, ready to be sent to a peer
+     * @param platformTag Build the caller can load; empty or our own tag means the local build
+     * @return File contents, or nullopt if no artifact is catalogued for that platform
+     */
+    std::optional<std::vector<std::byte>> get_lib_as_file(const std::string& libName,
+                                                          const std::string& platformTag = {});
 
     std::optional<std::string> get_lib_file_hash(const std::string& libName);
 private:
@@ -132,6 +138,15 @@ private:
      * @return Path to the first existing copy, or nullopt if there is none
      */
     std::optional<std::filesystem::path> _find_local_lib(const std::string& libName) const;
+
+    /**
+     * Looks for the build of the library that the given platform can load. Our own build for our
+     * own tag, otherwise the catalogue entry in the <cache>/<tag> directory.
+     */
+    std::optional<std::filesystem::path> _find_lib_for_platform(const std::string& libName,
+                                                                const std::string& platformTag) const;
+
+    bool _is_own_platform(const std::string& platformTag) const;
 
     /**
      * Returns a full path to a library file located in local cache (including extension)
