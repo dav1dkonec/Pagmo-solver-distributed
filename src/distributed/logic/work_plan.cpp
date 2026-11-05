@@ -53,7 +53,7 @@ std::vector<size_t> balanced_shares(const std::vector<node_capability>& nodes, c
         return {};
     }
 
-    // The leading node taking all of it is always within reach, so that is the ceiling
+    // The leader can always take the whole population alone, so its time for that is the ceiling
     double feasible = predicted_time(nodes.front(), populationSize, minIslandPopSize) + 1;
     double tooShort = 0;
 
@@ -70,7 +70,7 @@ std::vector<size_t> balanced_shares(const std::vector<node_capability>& nodes, c
         return total >= populationSize;
     };
 
-    // 30 halvings land on the shortest deadline these nodes can keep, to well under a second
+    // 30 halvings narrow the deadline down to well under a second, finer than the shares need
     for (int i = 0; i < 30; ++i)
     {
         const double deadline = (tooShort + feasible) / 2;
@@ -84,8 +84,8 @@ std::vector<size_t> balanced_shares(const std::vector<node_capability>& nodes, c
         }
     }
 
-    // The leader is served first and from its own capacity, so that a cluster with more nodes
-    // than the population can occupy never starves the fastest one of them
+    // The leader takes its own capacity first. Where the cluster has more capacity than the
+    // population needs, the node served last gets nothing - that must not be the fastest one.
     std::vector<size_t> shares(nodes.size(), 0);
     shares.front() = std::min(capacity_within(nodes.front(), feasible, minIslandPopSize), populationSize);
     size_t unassigned = populationSize - shares.front();
@@ -99,7 +99,7 @@ std::vector<size_t> balanced_shares(const std::vector<node_capability>& nodes, c
         unassigned -= shares.at(i);
     }
 
-    // Whatever the ceilings turned down goes to the leader, the one capacity not in question
+    // What the ceilings turned down goes back to the leader, the one node held to no ceiling
     shares.front() += unassigned;
 
     return shares;
