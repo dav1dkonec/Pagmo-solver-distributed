@@ -64,10 +64,13 @@ namespace
             const bool measured = info->totalStats.samples > 0;
             const double perIsland = measured ? info->totalStats.islandThroughput : assumedThroughput;
 
-            nodes.push_back({workerId, cores, perIsland, perIsland * static_cast<double>(cores), measured});
+            nodes.push_back({workerId, cores, perIsland, measured});
         }
 
-        std::ranges::sort(nodes, std::greater{}, &node_capability::saturated);
+        std::ranges::sort(nodes, std::greater{}, [](const node_capability& node)
+        {
+            return throughput_with_all_cores(node);
+        });
 
         // Islands take their algorithm in order, so the fastest node runs the first one. Where a node
         // has already been measured on the algorithm it is about to run, that figure is the better one.
@@ -79,7 +82,6 @@ namespace
             if (byAlgo != info->statsByAlgorithm.end() && byAlgo->second.samples > 0)
             {
                 nodes.at(i).islandThroughput = byAlgo->second.islandThroughput;
-                nodes.at(i).saturated = byAlgo->second.islandThroughput * static_cast<double>(nodes.at(i).coreCount);
                 nodes.at(i).measured = true;
             }
         }

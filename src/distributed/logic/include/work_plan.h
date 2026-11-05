@@ -12,11 +12,15 @@ struct node_capability
     std::string workerId;
     size_t coreCount;
     double islandThroughput;
-    // Throughput of the whole node, with every core carrying an island
-    double saturated;
     // False while islandThroughput is an assumption rather than something the node has shown
     bool measured;
 };
+
+/**
+ * Individuals per millisecond the node reaches with every core carrying an island, which is the
+ * most it can do and therefore how nodes are ranked against each other.
+ */
+double throughput_with_all_cores(const node_capability& node);
 
 /**
  * Milliseconds the node needs for this share. Not linear in the share: one too small to give
@@ -35,7 +39,7 @@ size_t capacity_within(const node_capability& node, double deadlineMs, size_t mi
  * Shares that have every node finish by one common deadline, as short a one as the nodes can keep
  * between them. A node too slow to fill a whole island by then is left with nothing, because it
  * could only become the makespan it was meant to reduce.
- * @param nodes Ordered by descending saturated throughput; the first one carries the remainder
+ * @param nodes Ordered by descending throughput_with_all_cores(); the first one leads
  * @param populationSize Individuals to divide, which the shares add up to exactly
  * @param minIslandPopSize Smallest population an island can hold
  * @return One share per node, in the order the nodes were given

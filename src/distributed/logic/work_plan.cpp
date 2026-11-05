@@ -13,6 +13,11 @@ namespace
     }
 }
 
+double throughput_with_all_cores(const node_capability& node)
+{
+    return node.islandThroughput * static_cast<double>(std::max<size_t>(1, node.coreCount));
+}
+
 double predicted_time(const node_capability& node, const size_t share, const size_t minIslandPopSize)
 {
     const size_t islands = std::clamp<size_t>(share / minIslandPopSize, 1, std::max<size_t>(1, node.coreCount));

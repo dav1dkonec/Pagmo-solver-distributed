@@ -9,12 +9,12 @@ namespace
 
     node_capability measured(const std::string& id, const size_t cores, const double perIsland)
     {
-        return {id, cores, perIsland, perIsland * static_cast<double>(cores), true};
+        return {id, cores, perIsland, true};
     }
 
     node_capability unmeasured(const std::string& id, const size_t cores)
     {
-        return {id, cores, 1.0, static_cast<double>(cores), false};
+        return {id, cores, 1.0, false};
     }
 
     // A wide node and a narrow one that is also slower per core, which is the case the planner
@@ -37,7 +37,7 @@ TEST_CASE("Work plan - predicted time", "[work-plan]") {
     }
 
     SECTION("a node with no measurement yet reports no time") {
-        const node_capability idle{"idle", 4, 0, 0, false};
+        const node_capability idle{"idle", 4, 0, false};
         REQUIRE(predicted_time(idle, 320, MIN_ISLAND) == 0);
     }
 }
