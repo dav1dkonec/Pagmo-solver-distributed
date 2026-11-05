@@ -180,14 +180,14 @@ std::vector<pagmo::population> distributed_worker::_split_population_for_islands
             remainingPop -= 4;
         }
 
-        // Assign individuals from the original population to this island's population
-        // The population is initially filled with random individuals, so breaking out of this loop is valid
-        pagmo::population islandPop{prob, currentSize, static_cast<unsigned>(seed + i)};
-        for (size_t j = 0; j < currentSize; ++j)
+        // Only the slots the original population cannot fill are generated at random; each of
+        // those costs a fitness evaluation, while the rest already carry theirs
+        const size_t fromMainPop = std::min(currentSize, totalPopSize - mainPopIndex);
+        pagmo::population islandPop{prob, currentSize - fromMainPop, static_cast<unsigned>(seed + i)};
+
+        for (size_t j = 0; j < fromMainPop; ++j)
         {
-            if (mainPopIndex >= totalPopSize)
-                break;
-            islandPop.set_x(j, pop.get_x()[mainPopIndex]);
+            islandPop.push_back(pop.get_x()[mainPopIndex], pop.get_f()[mainPopIndex]);
             ++mainPopIndex;
         }
 
