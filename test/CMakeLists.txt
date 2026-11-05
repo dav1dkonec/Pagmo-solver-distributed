@@ -22,6 +22,7 @@ add_executable(unit_tests_distributed_solver
     
     # Phase 4: Core Domain Logic
     logic/worker_info_repository_test.cpp
+    logic/work_plan_test.cpp
 
     # Phase 5: Discovery Layer
     discovery/udp_registry_test.cpp

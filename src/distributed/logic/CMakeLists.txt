@@ -3,6 +3,7 @@ add_library(distributed_logic
         distributed_controller.cpp
         distributed_worker.cpp
         distributed_solver.cpp
+        work_plan.cpp
         worker_info_repository.cpp
         worker_settings.cpp
         controller_settings.cpp

@@ -3,13 +3,12 @@
 #include "logger_init.h"
 #include "distributed_island.h"
 #include "number_utils.h"
+#include "work_plan.h"
 #include "population_tools.h"
 #include "pagmo/topologies/fully_connected.hpp"
 #include "pagmo/utils/multi_objective.hpp"
 
 #include <algorithm>
-#include <limits>
-#include <numeric>
 #include <ranges>
 
 void distributed_solver::_set_island_hints(pagmo::island& isl) const
@@ -28,108 +27,6 @@ void distributed_solver::_set_island_hints(pagmo::island& isl) const
 
 namespace
 {
-    // What the planner knows about one node: how fast one of its islands is, and how many of them
-    // it can run at once.
-    struct node_capability
-    {
-        std::string workerId;
-        size_t coreCount;
-        double islandThroughput;
-        // Throughput of the whole node, with every core carrying an island
-        double saturated;
-    };
-
-    // Milliseconds the node needs for this share. Not linear in the share: one too small to give
-    // every core an island of the minimum size leaves part of the hardware idle.
-    double predicted_time(const node_capability& node, const size_t share, const size_t minIslandPopSize)
-    {
-        const size_t islands = std::clamp<size_t>(share / minIslandPopSize, 1,
-                                                  std::max<size_t>(1, node.coreCount));
-        const double nodeThroughput = node.islandThroughput * static_cast<double>(islands);
-
-        return nodeThroughput > 0 ? static_cast<double>(share) / nodeThroughput : 0;
-    }
-
-    // The most this node can evolve by the deadline. More islands put more cores to work, but an
-    // island cannot go below the minimum size, so the capacity grows in steps of it rather than
-    // smoothly - and right below a step the node is at its least useful.
-    size_t capacity_within(const node_capability& node, const double deadlineMs, const size_t minIslandPopSize)
-    {
-        size_t capacity = 0;
-        for (size_t islands = 1; islands <= node.coreCount; ++islands)
-        {
-            const auto reachable = static_cast<size_t>(deadlineMs * node.islandThroughput
-                                                       * static_cast<double>(islands));
-
-            // Any fewer and one of the islands would be under the minimum size
-            if (reachable < islands * minIslandPopSize)
-            {
-                continue;
-            }
-
-            // Any more and the node opens another island, which the next step of the loop covers
-            const size_t stepLimit = islands < node.coreCount
-                                         ? (islands + 1) * minIslandPopSize - 1
-                                         : std::numeric_limits<size_t>::max();
-
-            capacity = std::max(capacity, std::min(reachable, stepLimit));
-        }
-
-        return capacity;
-    }
-
-    // Shares that have every node finish by one common deadline, as short a one as the nodes can
-    // keep between them. A node too slow to fill a whole island by then is left with nothing,
-    // because it could only become the makespan it was meant to reduce.
-    std::vector<size_t> balanced_shares(const std::vector<node_capability>& nodes, const size_t populationSize,
-                                        const size_t minIslandPopSize)
-    {
-        // The fastest node taking all of it is always within reach, so that is the ceiling
-        double feasible = predicted_time(nodes.front(), populationSize, minIslandPopSize) + 1;
-        double tooShort = 0;
-
-        const auto fits = [&](const double deadline)
-        {
-            size_t total = 0;
-            for (const auto& node : nodes)
-            {
-                total += capacity_within(node, deadline, minIslandPopSize);
-            }
-            return total >= populationSize;
-        };
-
-        // 30 halvings land on the shortest deadline these nodes can keep, to well under a second
-        for (int i = 0; i < 30; ++i)
-        {
-            const double deadline = (tooShort + feasible) / 2;
-            if (fits(deadline))
-            {
-                feasible = deadline;
-            }
-            else
-            {
-                tooShort = deadline;
-            }
-        }
-
-        std::vector<size_t> shares;
-        shares.reserve(nodes.size());
-        for (const auto& node : nodes)
-        {
-            shares.push_back(capacity_within(node, feasible, minIslandPopSize));
-        }
-
-        // The capacities add up to a little over the population. The surplus comes off the fastest
-        // node, where an individual costs the least time and no island is at risk of closing.
-        const size_t assigned = std::accumulate(shares.begin(), shares.end(), size_t{0});
-        if (assigned > populationSize)
-        {
-            shares.front() -= std::min(shares.front(), assigned - populationSize);
-        }
-
-        return shares;
-    }
-
     // Connected nodes by descending throughput, each already credited with the algorithm its
     // island will run.
     std::vector<node_capability> rank_nodes(worker_info_repository& repo,
@@ -164,11 +61,10 @@ namespace
             }
 
             const size_t cores = std::max<size_t>(1, info->coreCount);
-            const double perIsland = info->totalStats.samples > 0
-                                         ? info->totalStats.islandThroughput
-                                         : assumedThroughput;
+            const bool measured = info->totalStats.samples > 0;
+            const double perIsland = measured ? info->totalStats.islandThroughput : assumedThroughput;
 
-            nodes.push_back({workerId, cores, perIsland, perIsland * static_cast<double>(cores)});
+            nodes.push_back({workerId, cores, perIsland, perIsland * static_cast<double>(cores), measured});
         }
 
         std::ranges::sort(nodes, std::greater{}, &node_capability::saturated);
@@ -184,6 +80,7 @@ namespace
             {
                 nodes.at(i).islandThroughput = byAlgo->second.islandThroughput;
                 nodes.at(i).saturated = byAlgo->second.islandThroughput * static_cast<double>(nodes.at(i).coreCount);
+                nodes.at(i).measured = true;
             }
         }
 
