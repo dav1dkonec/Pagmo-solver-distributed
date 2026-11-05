@@ -8,6 +8,8 @@
 #include "pagmo/utils/multi_objective.hpp"
 
 #include <algorithm>
+#include <limits>
+#include <numeric>
 #include <ranges>
 
 void distributed_solver::_set_island_hints(pagmo::island& isl) const
@@ -48,39 +50,84 @@ namespace
         return nodeThroughput > 0 ? static_cast<double>(share) / nodeThroughput : 0;
     }
 
-    // Shares proportional to saturated throughput. That equalizes the finishing times of nodes
-    // which all receive enough work to fill their cores.
-    std::vector<size_t> proportional_shares(const std::vector<node_capability>& nodes, const size_t populationSize)
+    // The most this node can evolve by the deadline. More islands put more cores to work, but an
+    // island cannot go below the minimum size, so the capacity grows in steps of it rather than
+    // smoothly - and right below a step the node is at its least useful.
+    size_t capacity_within(const node_capability& node, const double deadlineMs, const size_t minIslandPopSize)
     {
-        double total = 0;
-        for (const auto& node : nodes)
+        size_t capacity = 0;
+        for (size_t islands = 1; islands <= node.coreCount; ++islands)
         {
-            total += node.saturated;
+            const auto reachable = static_cast<size_t>(deadlineMs * node.islandThroughput
+                                                       * static_cast<double>(islands));
+
+            // Any fewer and one of the islands would be under the minimum size
+            if (reachable < islands * minIslandPopSize)
+            {
+                continue;
+            }
+
+            // Any more and the node opens another island, which the next step of the loop covers
+            const size_t stepLimit = islands < node.coreCount
+                                         ? (islands + 1) * minIslandPopSize - 1
+                                         : std::numeric_limits<size_t>::max();
+
+            capacity = std::max(capacity, std::min(reachable, stepLimit));
+        }
+
+        return capacity;
+    }
+
+    // Shares that have every node finish by one common deadline, as short a one as the nodes can
+    // keep between them. A node too slow to fill a whole island by then is left with nothing,
+    // because it could only become the makespan it was meant to reduce.
+    std::vector<size_t> balanced_shares(const std::vector<node_capability>& nodes, const size_t populationSize,
+                                        const size_t minIslandPopSize)
+    {
+        // The fastest node taking all of it is always within reach, so that is the ceiling
+        double feasible = predicted_time(nodes.front(), populationSize, minIslandPopSize) + 1;
+        double tooShort = 0;
+
+        const auto fits = [&](const double deadline)
+        {
+            size_t total = 0;
+            for (const auto& node : nodes)
+            {
+                total += capacity_within(node, deadline, minIslandPopSize);
+            }
+            return total >= populationSize;
+        };
+
+        // 30 halvings land on the shortest deadline these nodes can keep, to well under a second
+        for (int i = 0; i < 30; ++i)
+        {
+            const double deadline = (tooShort + feasible) / 2;
+            if (fits(deadline))
+            {
+                feasible = deadline;
+            }
+            else
+            {
+                tooShort = deadline;
+            }
         }
 
         std::vector<size_t> shares;
         shares.reserve(nodes.size());
         for (const auto& node : nodes)
         {
-            const double fraction = total > 0 ? node.saturated / total : 1.0 / static_cast<double>(nodes.size());
-            shares.push_back(static_cast<size_t>(static_cast<double>(populationSize) * fraction));
+            shares.push_back(capacity_within(node, feasible, minIslandPopSize));
+        }
+
+        // The capacities add up to a little over the population. The surplus comes off the fastest
+        // node, where an individual costs the least time and no island is at risk of closing.
+        const size_t assigned = std::accumulate(shares.begin(), shares.end(), size_t{0});
+        if (assigned > populationSize)
+        {
+            shares.front() -= std::min(shares.front(), assigned - populationSize);
         }
 
         return shares;
-    }
-
-    // The cycle is over when its last node is, so this is the figure to minimize.
-    double predicted_makespan(const std::vector<node_capability>& nodes, const std::vector<size_t>& shares,
-                              const size_t minIslandPopSize)
-    {
-        double makespan = 0;
-        for (size_t i = 0; i < nodes.size(); ++i)
-        {
-            const size_t share = std::max(minIslandPopSize, shares.at(i));
-            makespan = std::max(makespan, predicted_time(nodes.at(i), share, minIslandPopSize));
-        }
-
-        return makespan;
     }
 
     // Connected nodes by descending throughput, each already credited with the algorithm its
@@ -180,41 +227,25 @@ std::vector<std::tuple<size_t, size_t, std::string, const pagmo::algorithm&>> di
         return output;
     }
 
-    // OPTION 2: one island per node, sized so that they finish together. Nodes join fastest first
-    // and only while each one shortens the cycle, because a node cannot be given less than one
-    // island of the minimum size - below its proportional share it would finish last and become
-    // the makespan it was supposed to reduce.
-    std::vector<node_capability> admitted{nodes.front()};
-    auto shares = proportional_shares(admitted, populationSize);
-    double bestMakespan = predicted_makespan(admitted, shares, minIslandPopSize);
+    // OPTION 2: one island per node that the deadline leaves with work to do, sized so that they
+    // all finish at about the same time
+    const auto shares = balanced_shares(nodes, populationSize, minIslandPopSize);
 
-    for (size_t i = 1; i < nodes.size(); ++i)
+    for (size_t i = 0; i < nodes.size(); ++i)
     {
-        auto candidate = admitted;
-        candidate.push_back(nodes.at(i));
+        const auto& node = nodes.at(i);
 
-        const auto candidateShares = proportional_shares(candidate, populationSize);
-        const double makespan = predicted_makespan(candidate, candidateShares, minIslandPopSize);
-
-        // The nodes are ordered, so once one cannot help, none of the slower ones can either
-        if (makespan >= bestMakespan)
+        // The fastest node carries the cycle even when the population is smaller than one island
+        const size_t share = i == 0 ? std::max(minIslandPopSize, shares.at(i)) : shares.at(i);
+        if (share < minIslandPopSize)
         {
-            dist_logger()->info("Leaving out {} and the slower nodes: the cycle would take {:.0f} s instead of {:.0f} s",
-                                nodes.at(i).workerId, makespan / 1000, bestMakespan / 1000);
-            break;
+            dist_logger()->info("Leaving {} out of this cycle: {} cores at {:.5f} ind/ms per island cannot "
+                                "shorten it", node.workerId, node.coreCount, node.islandThroughput);
+            continue;
         }
 
-        admitted = std::move(candidate);
-        shares = candidateShares;
-        bestMakespan = makespan;
-    }
-
-    for (size_t i = 0; i < admitted.size(); ++i)
-    {
-        const auto& node = admitted.at(i);
-        size_t islandPop = std::max(minIslandPopSize, shares.at(i));
         // Make sure it's divisible by 4 (some algorithms require this)
-        islandPop = ceil_to_multiple(islandPop, 4);
+        const size_t islandPop = ceil_to_multiple(share, 4);
 
         dist_logger()->debug("{} has been assigned {} individuals: {} cores at {:.5f} ind/ms per island, "
                              "predicted {:.0f} s", node.workerId, islandPop, node.coreCount, node.islandThroughput,
