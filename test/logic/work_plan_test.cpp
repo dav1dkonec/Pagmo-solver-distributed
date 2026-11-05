@@ -17,8 +17,8 @@ namespace
         return {id, cores, 1.0, static_cast<double>(cores), false};
     }
 
-    // The cluster this was developed against: an eight-core laptop and a four-core Raspberry Pi,
-    // throughputs as both reported them on a run of the real problem.
+    // A wide node and a narrow one that is also slower per core, which is the case the planner
+    // has to get right. Both figures come from a run of the real problem.
     const node_capability fast = measured("fast", 8, 0.00085);
     const node_capability slow = measured("slow", 4, 0.00038);
 }
@@ -112,6 +112,28 @@ TEST_CASE("Work plan - balanced shares", "[work-plan]") {
     SECTION("a measured node is held to no such ceiling") {
         const auto shares = balanced_shares({fast, slow}, 5000, MIN_ISLAND);
         REQUIRE(shares.at(1) > 4 * MIN_ISLAND);
+    }
+
+    SECTION("the fastest node is served first when the cluster outnumbers the population") {
+        // Five narrow nodes could take 5 x 320 between them, more than the population, and the
+        // leader must not be the one left out
+        std::vector<node_capability> cluster{unmeasured("lead", 4)};
+        for (int i = 0; i < 4; ++i) {
+            cluster.push_back(unmeasured("node" + std::to_string(i), 4));
+        }
+
+        const auto shares = balanced_shares(cluster, 960, MIN_ISLAND);
+        REQUIRE(shares.at(0) >= MIN_ISLAND);
+        REQUIRE(std::accumulate(shares.begin(), shares.end(), size_t{0}) == 960);
+    }
+
+    SECTION("nodes of equal capability are given equal shares") {
+        std::vector<node_capability> cluster(4, measured("node", 4, 0.0004));
+        const auto shares = balanced_shares(cluster, 1920, MIN_ISLAND);
+
+        for (const auto share : shares) {
+            REQUIRE(share == Catch::Approx(static_cast<double>(shares.front())).epsilon(0.05));
+        }
     }
 
     SECTION("a lone node takes everything") {

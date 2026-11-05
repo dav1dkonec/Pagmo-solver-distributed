@@ -84,18 +84,23 @@ std::vector<size_t> balanced_shares(const std::vector<node_capability>& nodes, c
         }
     }
 
+    // The leader is served first and from its own capacity, so that a cluster with more nodes
+    // than the population can occupy never starves the fastest one of them
     std::vector<size_t> shares(nodes.size(), 0);
-    size_t handedOut = 0;
-    for (size_t i = 1; i < nodes.size(); ++i)
+    shares.front() = std::min(capacity_within(nodes.front(), feasible, minIslandPopSize), populationSize);
+    size_t unassigned = populationSize - shares.front();
+
+    for (size_t i = 1; i < nodes.size() && unassigned > 0; ++i)
     {
         const size_t capacity = std::min(capacity_within(nodes.at(i), feasible, minIslandPopSize),
                                          share_ceiling(nodes.at(i), minIslandPopSize));
 
-        shares.at(i) = std::min(capacity, populationSize - handedOut);
-        handedOut += shares.at(i);
+        shares.at(i) = std::min(capacity, unassigned);
+        unassigned -= shares.at(i);
     }
 
-    shares.front() = populationSize - handedOut;
+    // Whatever the ceilings turned down goes to the leader, the one capacity not in question
+    shares.front() += unassigned;
 
     return shares;
 }
