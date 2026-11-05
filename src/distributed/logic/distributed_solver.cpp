@@ -33,6 +33,13 @@ void distributed_solver::_calibrate_unmeasured_workers(const pagmo::problem& pro
     auto& repo = _controller.get_worker_info_repository();
     const std::unordered_set<std::string> connectedWorkers = repo.get_connected_workers();
 
+    // A lone worker gets the whole population whatever its throughput is, and the unit it is about
+    // to run measures it anyway, so probing first would only evolve a population and discard it
+    if (connectedWorkers.size() < 2)
+    {
+        return;
+    }
+
     std::vector<std::string> unmeasured;
     for (const auto& workerId : connectedWorkers)
     {
