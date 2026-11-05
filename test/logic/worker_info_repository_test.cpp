@@ -6,22 +6,35 @@
 TEST_CASE("Worker Info Repository - join and leave", "[worker-info]") {
     worker_info_repository repo;
     
-    SECTION("worker join adds to connected") {
+    SECTION("worker counts as connected once it reports its hardware") {
         repo.worker_joined("worker1");
-        auto workers = repo.get_connected_workers();
-        REQUIRE(workers.contains("worker1"));
+        REQUIRE(repo.get_worker_count() == 0);
+        
+        repo.worker_reported_cores("worker1", 4);
+        REQUIRE(repo.get_connected_workers().contains("worker1"));
+    }
+    
+    SECTION("rejoining with a known record needs no new report") {
+        repo.worker_joined("worker1");
+        repo.worker_reported_cores("worker1", 4);
+        repo.worker_left("worker1");
+        
+        repo.worker_joined("worker1");
+        REQUIRE(repo.get_worker_count() == 1);
     }
     
     SECTION("worker leave removes from connected") {
         repo.worker_joined("worker1");
+        repo.worker_reported_cores("worker1", 4);
         repo.worker_left("worker1");
         REQUIRE(repo.get_worker_count() == 0);
     }
     
     SECTION("multiple workers") {
-        repo.worker_joined("w1");
-        repo.worker_joined("w2");
-        repo.worker_joined("w3");
+        for (const auto* id : {"w1", "w2", "w3"}) {
+            repo.worker_joined(id);
+            repo.worker_reported_cores(id, 4);
+        }
         
         REQUIRE(repo.get_worker_count() == 3);
         
@@ -117,6 +130,14 @@ TEST_CASE("Worker Info Repository - throughput", "[worker-info]") {
         repo.worker_reported_cores("worker1", 4);
         REQUIRE(repo.get_worker_info("worker1")->coreCount == 4);
     }
+
+    SECTION("a plain join leaves the throughput record alone") {
+        repo.worker_started_work("worker1");
+        repo.worker_finished_work("worker1", 400, "DE", 100, 2);
+
+        repo.worker_joined("worker1");
+        REQUIRE(repo.get_worker_info("worker1")->totalStats.islandThroughput == 2.0);
+    }
 }
 
 TEST_CASE("Worker Info Repository - queries", "[worker-info]") {
@@ -129,7 +150,9 @@ TEST_CASE("Worker Info Repository - queries", "[worker-info]") {
     
     SECTION("get connected workers") {
         repo.worker_joined("w1");
+        repo.worker_reported_cores("w1", 4);
         repo.worker_joined("w2");
+        repo.worker_reported_cores("w2", 8);
         
         auto workers = repo.get_connected_workers();
         REQUIRE(workers.size() == 2);
@@ -160,6 +183,7 @@ TEST_CASE("Worker Info Repository - wait until", "[worker-info]") {
         std::thread t([&repo]() {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
             repo.worker_joined("worker1");
+            repo.worker_reported_cores("worker1", 4);
         });
         
         auto start = std::chrono::high_resolution_clock::now();
@@ -183,6 +207,7 @@ TEST_CASE("Worker Info Repository - wait until", "[worker-info]") {
     
     SECTION("timed wait returns immediately when target is already met") {
         repo.worker_joined("worker1");
+        repo.worker_reported_cores("worker1", 4);
         
         REQUIRE(repo.wait_until_worker_count(1, std::chrono::milliseconds(5000)));
     }

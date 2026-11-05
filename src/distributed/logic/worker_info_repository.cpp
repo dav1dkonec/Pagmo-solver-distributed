@@ -36,7 +36,13 @@ void worker_info_repository::worker_joined(const std::string& workerID, worker_i
         {
             _workerRecords.insert({workerID, info});
         }
-        _connectedWorkers.insert(workerID);
+
+        // A node counts as connected once we know what it can do, so that a plan is never built
+        // on a capability report still in flight. A record kept from an earlier session has it.
+        if (_workerRecords.at(workerID).coreCount > 0)
+        {
+            _connectedWorkers.insert(workerID);
+        }
     }
     _cv.notify_all();
 }
@@ -68,12 +74,16 @@ void worker_info_repository::worker_started_work(const std::string& workerID)
 
 void worker_info_repository::worker_reported_cores(const std::string& workerID, const size_t coreCount)
 {
-    std::scoped_lock lock(_mtx);
+    {
+        std::scoped_lock lock(_mtx);
 
-    // The message can beat the join that creates the record, so make one if there is none yet
-    _workerRecords[workerID].coreCount = coreCount;
+        // The report can beat the join that creates the record, so make one if there is none yet
+        _workerRecords[workerID].coreCount = coreCount;
+        _connectedWorkers.insert(workerID);
 
-    dist_logger()->info("Worker {} reports {} cores", workerID, coreCount);
+        dist_logger()->info("Worker {} reports {} cores", workerID, coreCount);
+    }
+    _cv.notify_all();
 }
 
 void worker_info_repository::worker_finished_work(const std::string& workerID, const size_t processedPopulation,

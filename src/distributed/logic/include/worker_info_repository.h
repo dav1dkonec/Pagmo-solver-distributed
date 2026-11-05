@@ -123,7 +123,11 @@ public:
     void worker_finished_work(const std::string& workerID, size_t processedPopulation, const std::string& algoName,
                               uint64_t evolveTimeMs, size_t islandCount);
 
-    // Records what the worker itself knows about its hardware, see MsgType::WORKER_INFO
+    /**
+     * Records what the worker itself knows about its hardware, see MsgType::WORKER_INFO. This is
+     * also what admits it to the connected set, because a plan built without it would misjudge
+     * the node; a worker reconnecting with a stored record is admitted by worker_joined().
+     */
     void worker_reported_cores(const std::string& workerID, size_t coreCount);
 
     std::optional<worker_info> get_worker_info(const std::string& workerID);
