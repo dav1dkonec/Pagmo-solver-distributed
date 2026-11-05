@@ -7,6 +7,9 @@
 #include "pagmo/topologies/fully_connected.hpp"
 #include "pagmo/utils/multi_objective.hpp"
 
+#include <algorithm>
+#include <ranges>
+
 void distributed_solver::_set_island_hints(pagmo::island& isl) const
 {
     if (!_initialHints.empty())
@@ -21,74 +24,128 @@ void distributed_solver::_set_island_hints(pagmo::island& isl) const
     }
 }
 
-void distributed_solver::_calibrate_unmeasured_workers(const pagmo::problem& problem,
-                                                       const std::vector<pagmo::algorithm>& algorithms,
-                                                       const size_t populationSize)
+namespace
 {
-    if (algorithms.empty())
+    // What the planner knows about one node: how fast one of its islands is, and how many of them
+    // it can run at once.
+    struct node_capability
     {
-        return;
+        std::string workerId;
+        size_t coreCount;
+        double islandThroughput;
+        // Throughput of the whole node, with every core carrying an island
+        double saturated;
+    };
+
+    // Milliseconds the node needs for this share. Not linear in the share: one too small to give
+    // every core an island of the minimum size leaves part of the hardware idle.
+    double predicted_time(const node_capability& node, const size_t share, const size_t minIslandPopSize)
+    {
+        const size_t islands = std::clamp<size_t>(share / minIslandPopSize, 1,
+                                                  std::max<size_t>(1, node.coreCount));
+        const double nodeThroughput = node.islandThroughput * static_cast<double>(islands);
+
+        return nodeThroughput > 0 ? static_cast<double>(share) / nodeThroughput : 0;
     }
 
-    auto& repo = _controller.get_worker_info_repository();
-    const std::unordered_set<std::string> connectedWorkers = repo.get_connected_workers();
-
-    // A lone worker gets the whole population whatever its throughput is, and the unit it is about
-    // to run measures it anyway, so probing first would only evolve a population and discard it
-    if (connectedWorkers.size() < 2)
+    // Shares proportional to saturated throughput. That equalizes the finishing times of nodes
+    // which all receive enough work to fill their cores.
+    std::vector<size_t> proportional_shares(const std::vector<node_capability>& nodes, const size_t populationSize)
     {
-        return;
-    }
-
-    std::vector<std::string> unmeasured;
-    for (const auto& workerId : connectedWorkers)
-    {
-        const auto info = repo.get_worker_info(workerId);
-        if (info && info->totalStats.samples == 0)
+        double total = 0;
+        for (const auto& node : nodes)
         {
-            unmeasured.push_back(workerId);
+            total += node.saturated;
         }
-    }
 
-    if (unmeasured.empty())
-    {
-        return;
-    }
-
-    // One population for all of them; throughput of unequal units is not comparable.
-    const pagmo::population probe{problem, populationSize};
-
-    std::vector<pagmo::island> probeIslands;
-    probeIslands.reserve(unmeasured.size());
-    for (const auto& workerId : unmeasured)
-    {
-        dist_logger()->debug("Calibrating {} with {} individuals", workerId, populationSize);
-        probeIslands.emplace_back(distributed_island{workerId, 1}, algorithms.front(), probe);
-    }
-
-    // All at once: the islands evolve on their own threads, so this costs one unit of wall clock.
-    for (auto& island : probeIslands)
-    {
-        island.evolve(1);
-    }
-
-    for (size_t i = 0; i < probeIslands.size(); ++i)
-    {
-        try
+        std::vector<size_t> shares;
+        shares.reserve(nodes.size());
+        for (const auto& node : nodes)
         {
-            probeIslands.at(i).wait_check();
+            const double fraction = total > 0 ? node.saturated / total : 1.0 / static_cast<double>(nodes.size());
+            shares.push_back(static_cast<size_t>(static_cast<double>(populationSize) * fraction));
         }
-        catch (const std::exception& e)
+
+        return shares;
+    }
+
+    // The cycle is over when its last node is, so this is the figure to minimize.
+    double predicted_makespan(const std::vector<node_capability>& nodes, const std::vector<size_t>& shares,
+                              const size_t minIslandPopSize)
+    {
+        double makespan = 0;
+        for (size_t i = 0; i < nodes.size(); ++i)
         {
-            dist_logger()->warn("Calibration of {} failed: {}", unmeasured.at(i), e.what());
+            const size_t share = std::max(minIslandPopSize, shares.at(i));
+            makespan = std::max(makespan, predicted_time(nodes.at(i), share, minIslandPopSize));
         }
+
+        return makespan;
+    }
+
+    // Connected nodes by descending throughput, each already credited with the algorithm its
+    // island will run.
+    std::vector<node_capability> rank_nodes(worker_info_repository& repo,
+                                            const std::vector<pagmo::algorithm>& algorithms)
+    {
+        const auto connectedWorkers = repo.get_connected_workers();
+
+        // A node that has not run anything yet is credited with what the measured ones average per
+        // island, so its cores still count. With nothing measured at all the figure cancels out of
+        // the ratios and the split is decided by core count alone.
+        double measuredSum = 0;
+        size_t measuredCount = 0;
+        for (const auto& workerId : connectedWorkers)
+        {
+            const auto info = repo.get_worker_info(workerId);
+            if (info && info->totalStats.samples > 0)
+            {
+                measuredSum += info->totalStats.islandThroughput;
+                ++measuredCount;
+            }
+        }
+        const double assumedThroughput = measuredCount > 0 ? measuredSum / static_cast<double>(measuredCount) : 1.0;
+
+        std::vector<node_capability> nodes;
+        nodes.reserve(connectedWorkers.size());
+        for (const auto& workerId : connectedWorkers)
+        {
+            const auto info = repo.get_worker_info(workerId);
+            if (!info)
+            {
+                continue;
+            }
+
+            const size_t cores = std::max<size_t>(1, info->coreCount);
+            const double perIsland = info->totalStats.samples > 0
+                                         ? info->totalStats.islandThroughput
+                                         : assumedThroughput;
+
+            nodes.push_back({workerId, cores, perIsland, perIsland * static_cast<double>(cores)});
+        }
+
+        std::ranges::sort(nodes, std::greater{}, &node_capability::saturated);
+
+        // Islands take their algorithm in order, so the fastest node runs the first one. Where a node
+        // has already been measured on the algorithm it is about to run, that figure is the better one.
+        for (size_t i = 0; i < nodes.size() && !algorithms.empty(); ++i)
+        {
+            const auto info = repo.get_worker_info(nodes.at(i).workerId);
+            const auto byAlgo = info->statsByAlgorithm.find(algorithms.at(i % algorithms.size()).get_name());
+
+            if (byAlgo != info->statsByAlgorithm.end() && byAlgo->second.samples > 0)
+            {
+                nodes.at(i).islandThroughput = byAlgo->second.islandThroughput;
+                nodes.at(i).saturated = byAlgo->second.islandThroughput * static_cast<double>(nodes.at(i).coreCount);
+            }
+        }
+
+        return nodes;
     }
 }
 
-
 std::vector<std::tuple<size_t, size_t, std::string, const pagmo::algorithm&>> distributed_solver::_generate_work_plan(
-    const size_t islandCount, const size_t populationSize, const std::vector<pagmo::algorithm>& algorithms, const size_t
-    minIslandPopSize)
+    const size_t populationSize, const std::vector<pagmo::algorithm>& algorithms, const size_t minIslandPopSize)
 {
     std::vector<std::tuple<size_t, size_t, std::string, const pagmo::algorithm&>> output{};
 
@@ -104,14 +161,12 @@ std::vector<std::tuple<size_t, size_t, std::string, const pagmo::algorithm&>> di
         return alg;
     };
 
-    // Prepare worker-related vars
-    auto& repo = _controller.get_worker_info_repository();
-    std::unordered_set<std::string> connectedWorkers = repo.get_connected_workers();
-    const size_t workerCount = connectedWorkers.size();
+    const auto nodes = rank_nodes(_controller.get_worker_info_repository(), algorithms);
 
-    // OPTION 1: There are more islands than connected workers (they've not connected yet), so divide work equally
-    if (islandCount > workerCount || _loadBalancingStrategy == load_balancing_strategy::ALL_ISLANDS_EQUAL)
+    // OPTION 1: no node to divide by, or the caller asked for an even split regardless of capability
+    if (nodes.empty() || _loadBalancingStrategy == load_balancing_strategy::ALL_ISLANDS_EQUAL)
     {
+        const size_t islandCount = std::max<size_t>(1, nodes.size());
         size_t islandPop = std::max(minIslandPopSize, populationSize / islandCount);
         // Make sure it's divisible by 4 (some algorithms require this)
         islandPop = ceil_to_multiple(islandPop, 4);
@@ -121,95 +176,51 @@ std::vector<std::tuple<size_t, size_t, std::string, const pagmo::algorithm&>> di
             // Empty worker id, it doesn't matter because all workers get the same amount of work
             output.emplace_back(islandPop, 1, "", getAlgorithm());
         }
+
+        return output;
     }
 
-    // OPTION 2: All expected workers have connected, we can divide work by their performance, there can be extra workers too
-    else
+    // OPTION 2: one island per node, sized so that they finish together. Nodes join fastest first
+    // and only while each one shortens the cycle, because a node cannot be given less than one
+    // island of the minimum size - below its proportional share it would finish last and become
+    // the makespan it was supposed to reduce.
+    std::vector<node_capability> admitted{nodes.front()};
+    auto shares = proportional_shares(admitted, populationSize);
+    double bestMakespan = predicted_makespan(admitted, shares, minIslandPopSize);
+
+    for (size_t i = 1; i < nodes.size(); ++i)
     {
-        // A vector of [workerId, algorithm, performanceAvgMetric], this is used to calculate island populations
-        std::vector<std::tuple<std::string, const pagmo::algorithm&, double>> workersPreprocessed{};
-        workersPreprocessed.reserve(islandCount);
+        auto candidate = admitted;
+        candidate.push_back(nodes.at(i));
 
-        // 1) Assign workers to algorithms, picking the best-fit worker per island
-        for (size_t i = 0; i < islandCount; ++i)
+        const auto candidateShares = proportional_shares(candidate, populationSize);
+        const double makespan = predicted_makespan(candidate, candidateShares, minIslandPopSize);
+
+        // The nodes are ordered, so once one cannot help, none of the slower ones can either
+        if (makespan >= bestMakespan)
         {
-            const auto& currentAlgorithm = getAlgorithm();
-            const auto& algoName = currentAlgorithm.get_name();
-
-            double bestTotalAvg = 0;
-            std::string bestTotalWorkerId;
-            double bestAlgoAvg = 0;
-            std::string bestAlgoWorkerId;
-
-            // Find the best worker in total together with the best worker for this algorithm
-            for (const auto& workerId : connectedWorkers)
-            {
-                const auto& wInfo = repo.get_worker_info(workerId);
-
-                // Computation time only; the round trip also holds the one-off blob transfer.
-                const double wTotalAvg = wInfo->totalStats.throughput;
-
-                double wAlgoAvg = 0;
-                if (wInfo->statsByAlgorithm.contains(algoName))
-                {
-                    wAlgoAvg = wInfo->statsByAlgorithm.at(algoName).throughput;
-                }
-
-                if (wTotalAvg >= bestTotalAvg)
-                {
-                    bestTotalAvg = wTotalAvg;
-                    bestTotalWorkerId = workerId;
-                }
-
-                if (wAlgoAvg >= bestAlgoAvg)
-                {
-                    bestAlgoAvg = wAlgoAvg;
-                    bestAlgoWorkerId = workerId;
-                }
-            }
-
-            // We prefer to choose by algorithm stats, we choose by total only if it's 2x better
-            const bool preferTotal = (bestTotalAvg > 2 * bestAlgoAvg);
-            const auto& chosenWorkerId = preferTotal ? bestTotalWorkerId : bestAlgoWorkerId;
-            const double chosenAvg = preferTotal ? bestTotalAvg : bestAlgoAvg;
-
-            workersPreprocessed.emplace_back(chosenWorkerId, currentAlgorithm, chosenAvg);
-            // Remove the chosen worker from the set so it cannot be assigned to another island
-            connectedWorkers.erase(chosenWorkerId);
+            dist_logger()->info("Leaving out {} and the slower nodes: the cycle would take {:.0f} s instead of {:.0f} s",
+                                nodes.at(i).workerId, makespan / 1000, bestMakespan / 1000);
+            break;
         }
 
-        // 2) Calculate the total performance of the worker cluster
-        double totalPerformance = 0;
-        for (const auto& [workerId, algorithm, perfMetric] : workersPreprocessed)
-        {
-            totalPerformance += perfMetric;
-        }
+        admitted = std::move(candidate);
+        shares = candidateShares;
+        bestMakespan = makespan;
+    }
 
-        // 3) Calculate the percentage of performance committed by each worker, pop size is then derived from this
-        for (const auto& [workerId, algorithm, perfMetric] : workersPreprocessed)
-        {
-            double workerPerfPercentage;
-            if (totalPerformance > 0)
-            {
-                workerPerfPercentage = perfMetric / totalPerformance;
-            }
-            else
-            {
-                // If all metrics are zero fall back to an equal distribution to avoid division by zero
-                workerPerfPercentage = 1.0 / static_cast<double>(workersPreprocessed.size());
-            }
+    for (size_t i = 0; i < admitted.size(); ++i)
+    {
+        const auto& node = admitted.at(i);
+        size_t islandPop = std::max(minIslandPopSize, shares.at(i));
+        // Make sure it's divisible by 4 (some algorithms require this)
+        islandPop = ceil_to_multiple(islandPop, 4);
 
-            // The population size of each worker is proportional to the percentage of performance it has
-            const auto workerPopSize = static_cast<size_t>(static_cast<double>(populationSize) * workerPerfPercentage);
-            auto finalWorkerPopSize = std::max(minIslandPopSize, workerPopSize);
-            // Make sure it's divisible by 4 (some algorithms require this)
-            finalWorkerPopSize = ceil_to_multiple(finalWorkerPopSize, 4);
+        dist_logger()->debug("{} has been assigned {} individuals: {} cores at {:.5f} ind/ms per island, "
+                             "predicted {:.0f} s", node.workerId, islandPop, node.coreCount, node.islandThroughput,
+                             predicted_time(node, islandPop, minIslandPopSize) / 1000);
 
-            dist_logger()->debug("{} provides {}% of total worker cluster processing power", workerId, workerPerfPercentage * 100);
-            dist_logger()->debug("{} has been assigned {} population size", workerId, finalWorkerPopSize);
-
-            output.emplace_back(finalWorkerPopSize, 1, workerId, algorithm);
-        }
+        output.emplace_back(islandPop, 1, node.workerId, getAlgorithm());
     }
 
     return output;
@@ -240,21 +251,11 @@ void distributed_solver::evolve(const pagmo::problem& problem, const std::vector
     // Archipelago using fully connected topology between the islands
     _archipelago = pagmo::archipelago{pagmo::fully_connected{}};
 
-    // Without a throughput sample per worker the plan below can only divide the work evenly
-    _calibrate_unmeasured_workers(problem, algorithms, minIslandPopSize);
+    // One island per node the plan admits, each sized so that they all finish at about the same time
+    const auto workPlan = _generate_work_plan(populationSize, algorithms, minIslandPopSize);
 
-    // One island per worker that is still here once calibration is over. Asking for more is what
-    // makes the plan fall back to an equal split that ignores how fast each node actually is.
-    const size_t optimalIslandCount =
-        std::max<size_t>(1, _controller.get_worker_info_repository().get_worker_count());
-
-    // Work plan ensures correct worker load balancing
-    const auto& workPlan = _generate_work_plan(optimalIslandCount, populationSize, algorithms, minIslandPopSize);
-
-    for (int i = 0; i < optimalIslandCount; ++i)
+    for (const auto& [islandPopSize, islandCycleCount, preferredWorker, algorithm] : workPlan)
     {
-        const auto [islandPopSize,islandCycleCount,preferredWorker, algorithm] = workPlan.at(i);
-
         distributed_island dist_island{preferredWorker, islandCycleCount};
         auto isl = pagmo::island{dist_island, algorithm, problem, islandPopSize};
         // We set the initial population to this island (hints) if there are any

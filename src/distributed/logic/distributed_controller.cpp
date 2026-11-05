@@ -55,7 +55,8 @@ void distributed_controller::_handle_Workers_Socket_Msg()
             // Write stats into the worker info repository
             const auto workResults = vector_deserialize<work_container>(binary);
             _settings().workerInfo.worker_finished_work(workerId, workResults.evolvedPopulation,
-                                                       workResults.algo.get_name(), workResults.evolveTimeMs);
+                                                       workResults.algo.get_name(), workResults.evolveTimeMs,
+                                                       workResults.islandCount);
 
             // Pass results from worker to island
             const auto myIslandId = _workAllocationMap.at(workerId).islandId;
@@ -65,6 +66,13 @@ void distributed_controller::_handle_Workers_Socket_Msg()
             _workAllocationMap.erase(workerId);
             // Add worker back into the free pool
             _add_free_worker(workerId);
+        }
+        break;
+
+    case MsgType::WORKER_INFO:
+        {
+            const auto request = vector_deserialize<worker_info_request>(binary);
+            _settings().workerInfo.worker_reported_cores(workerId, request.core_count);
         }
         break;
 

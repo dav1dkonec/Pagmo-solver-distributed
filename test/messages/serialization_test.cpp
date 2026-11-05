@@ -51,13 +51,14 @@ TEST_CASE("Serialization - work_container", "[serialize]")
 
 TEST_CASE("Serialization - get_dll_request", "[serialize]") {
     SECTION("round-trip") {
-        get_dll_request original("myudp.dll");
+        get_dll_request original("myudp.dll", "darwin-arm64");
         
         auto serialized = vector_serialize<get_dll_request>(original);
         REQUIRE(!serialized.empty());
         
         auto deserialized = vector_deserialize<get_dll_request>(serialized);
         REQUIRE(deserialized.dll_name == "myudp.dll");
+        REQUIRE(deserialized.platform == "darwin-arm64");
     }
     
     SECTION("various filenames") {
@@ -69,7 +70,7 @@ TEST_CASE("Serialization - get_dll_request", "[serialize]") {
         };
         
         for(const auto& name : names) {
-            get_dll_request req(name);
+            get_dll_request req(name, "linux-arm64");
             auto s = vector_serialize<get_dll_request>(req);
             auto d = vector_deserialize<get_dll_request>(s);
             REQUIRE(d.dll_name == name);

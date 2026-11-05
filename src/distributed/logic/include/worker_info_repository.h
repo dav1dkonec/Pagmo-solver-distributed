@@ -26,12 +26,14 @@ struct work_stats
     // Individuals the worker really evolved, as reported by the worker
     uint64_t processedPopulation = 0;
 
-    // Individuals per millisecond of computation, aged so that recent units dominate
-    double throughput = 0;
+    // Individuals per millisecond of computation on one island, aged so that recent units
+    // dominate. Per island rather than per node, so that units run at different island counts
+    // stay comparable; multiply by the island count to get the throughput of the whole node.
+    double islandThroughput = 0;
     uint64_t samples = 0;
 
-    // Folds one finished unit into the cumulative totals and into throughput
-    void add_sample(uint64_t workTimeMs, uint64_t evolveTimeMs, uint64_t population);
+    // Folds one finished unit into the cumulative totals and into the throughput average
+    void add_sample(uint64_t workTimeMs, uint64_t evolveTimeMs, uint64_t population, uint64_t islandCount);
 
 private:
     //####################################
@@ -47,21 +49,32 @@ private:
         ar & BOOST_SERIALIZATION_NVP(evolveTime);
         ar & BOOST_SERIALIZATION_NVP(processedPopulation);
 
-        // Files written before throughput existed load with it at zero and re-learn it.
-        if (version >= 1)
+        if (version == 1)
         {
-            ar & BOOST_SERIALIZATION_NVP(throughput);
+            // Version 1 measured the node as a whole, which is not comparable with a per-island
+            // figure. Read it to keep the archive aligned and let the next unit re-learn.
+            double legacyThroughput = 0;
+            uint64_t legacySamples = 0;
+            ar & boost::serialization::make_nvp("throughput", legacyThroughput);
+            ar & boost::serialization::make_nvp("samples", legacySamples);
+        }
+        else if (version >= 2)
+        {
+            ar & BOOST_SERIALIZATION_NVP(islandThroughput);
             ar & BOOST_SERIALIZATION_NVP(samples);
         }
     }
 };
 
-BOOST_CLASS_VERSION(work_stats, 1)
+BOOST_CLASS_VERSION(work_stats, 2)
 
 struct worker_info
 {
     work_stats totalStats{};
     std::unordered_map<std::string, work_stats> statsByAlgorithm{};
+
+    // Islands the worker can run in parallel, as it reported on connecting. Zero until it does.
+    size_t coreCount{};
 
     // Place to save a timestamp when worker_started_work() is called
     std::chrono::high_resolution_clock::time_point lastWorkStartTime;
@@ -74,12 +87,19 @@ private:
     friend class boost::serialization::access;
 
     template <typename Archive>
-    void serialize(Archive& ar, unsigned)
+    void serialize(Archive& ar, const unsigned version)
     {
         ar & BOOST_SERIALIZATION_NVP(totalStats);
         ar & BOOST_SERIALIZATION_NVP(statsByAlgorithm);
+
+        if (version >= 1)
+        {
+            ar & BOOST_SERIALIZATION_NVP(coreCount);
+        }
     }
 };
+
+BOOST_CLASS_VERSION(worker_info, 1)
 
 class worker_info_repository
 {
@@ -101,7 +121,10 @@ public:
     void worker_started_work(const std::string& workerID);
 
     void worker_finished_work(const std::string& workerID, size_t processedPopulation, const std::string& algoName,
-                              uint64_t evolveTimeMs);
+                              uint64_t evolveTimeMs, size_t islandCount);
+
+    // Records what the worker itself knows about its hardware, see MsgType::WORKER_INFO
+    void worker_reported_cores(const std::string& workerID, size_t coreCount);
 
     std::optional<worker_info> get_worker_info(const std::string& workerID);
 

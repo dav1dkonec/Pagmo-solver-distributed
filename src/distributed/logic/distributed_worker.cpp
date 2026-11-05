@@ -21,6 +21,19 @@ namespace
         const auto delta = std::chrono::steady_clock::now() - start;
         return std::chrono::duration_cast<std::chrono::milliseconds>(delta).count();
     }
+
+    // One island occupies one core, so this is also how many islands this node can run at once.
+    unsigned detected_core_count()
+    {
+        const unsigned cores = std::thread::hardware_concurrency();
+        if (cores > 0)
+        {
+            return cores;
+        }
+
+        dist_logger()->debug("Assuming 8 cores (cannot detect core count)");
+        return 8;
+    }
 }
 
 //#####################################################################################
@@ -118,6 +131,7 @@ void distributed_worker::_single_threaded_worker(const pagmo::algorithm& algo, c
     work_container results{algo, new_pop};
     results.evolveTimeMs = elapsed_ms(evolveStart);
     results.evolvedPopulation = pop.size();
+    results.islandCount = 1;
     output.send(MsgType::WORK_RESULTS, results);
 }
 
@@ -125,12 +139,7 @@ void distributed_worker::_single_threaded_worker(const pagmo::algorithm& algo, c
 unsigned distributed_worker::_compute_optimal_island_count(const size_t totalPopSize,
                                                           const size_t minIslandPopSize)
 {
-    unsigned islandCount = std::thread::hardware_concurrency();
-    if (islandCount == 0)
-    {
-        dist_logger()->debug("Defaulting to 8 islands (Cannot detect core count)");
-        islandCount = 8;
-    }
+    unsigned islandCount = detected_core_count();
 
     // More islands than the assignment can fill at the minimum island size would inflate it,
     // which would silently discard the controller's capability-based split.
@@ -249,6 +258,7 @@ void distributed_worker::_archipelago_based_worker(pagmo::algorithm& algo, pagmo
     work_container results{archi[0].get_algorithm(), newPop};
     results.evolveTimeMs = elapsed_ms(evolveStart);
     results.evolvedPopulation = evolvedPopulation;
+    results.islandCount = islandCount;
     output.send(MsgType::WORK_RESULTS, results);
 }
 
@@ -341,6 +351,10 @@ distributed_worker::distributed_worker(const std::string& controllerAddress,
     _workerId = _settings().workerId;
     _workerSocket.set_routing_id(_workerId);
     _workerSocket.connect(controllerAddress);
+
+    // Queued until the connection is up, like the hello message above. The controller needs it to
+    // size the first work unit of a node it has never measured.
+    _workerSocket.send(MsgType::WORKER_INFO, worker_info_request{detected_core_count()});
 }
 
 void distributed_worker::client_loop()

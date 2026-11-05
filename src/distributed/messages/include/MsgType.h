@@ -55,7 +55,39 @@ enum class MsgType
     GET_BLOB,
     BLOB_BINARY,
     WORK_FAILED,
-    PUT_DLL
+    PUT_DLL,
+    WORKER_INFO
+};
+
+// Capabilities the controller cannot measure, sent by the worker right after it connects.
+class worker_info_request
+{
+public:
+    size_t core_count{};
+
+    worker_info_request(const size_t core_count)
+        : core_count(core_count)
+    {
+    }
+
+    worker_info_request() = default;
+
+private:
+    friend class boost::serialization::access;
+
+    template <typename Archive>
+    void save(Archive& ar, unsigned) const
+    {
+        pagmo::detail::to_archive(ar, core_count);
+    }
+
+    template <typename Archive>
+    void load(Archive& ar, unsigned)
+    {
+        pagmo::detail::from_archive(ar, core_count);
+    }
+
+    BOOST_SERIALIZATION_SPLIT_MEMBER()
 };
 
 // Requests a read-only blob shared by every work unit, so it travels once per worker.
@@ -140,6 +172,9 @@ public:
     // Individuals the worker really evolved. Can exceed pop.size(), because an archipelago
     // worker pads each island up to its minimum size. Also only set on the way back.
     size_t evolvedPopulation{};
+    // Islands the worker ran in parallel, so the controller can tell throughput per island
+    // from throughput of the whole node. Also only set on the way back.
+    size_t islandCount{};
 
     work_container(pagmo::algorithm algo, pagmo::population pop, std::string preferredWorker = "",
                    const size_t cycleCount = 1) :
@@ -162,13 +197,15 @@ private:
     template <typename Archive>
     void save(Archive& ar, unsigned) const
     {
-        pagmo::detail::to_archive(ar, algo, pop, preferredWorkerId, cycleCount, evolveTimeMs, evolvedPopulation);
+        pagmo::detail::to_archive(ar, algo, pop, preferredWorkerId, cycleCount, evolveTimeMs, evolvedPopulation,
+                                  islandCount);
     }
 
     template <typename Archive>
     void load(Archive& ar, unsigned)
     {
-        pagmo::detail::from_archive(ar, algo, pop, preferredWorkerId, cycleCount, evolveTimeMs, evolvedPopulation);
+        pagmo::detail::from_archive(ar, algo, pop, preferredWorkerId, cycleCount, evolveTimeMs, evolvedPopulation,
+                                    islandCount);
     }
 
     BOOST_SERIALIZATION_SPLIT_MEMBER()

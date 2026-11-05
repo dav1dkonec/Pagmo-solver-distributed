@@ -21,28 +21,15 @@ class distributed_solver : public logger_control
     void _set_island_hints(pagmo::island& isl) const;
 
     /**
-     * Generates a list of input parameters for each island
-     * @param islandCount The number of islands we want to use
+     * Decides how the population is divided for this evolution cycle: one island per node that
+     * can shorten the cycle, each sized so that the nodes finish at about the same time.
      * @param populationSize The total population size
-     * @param algorithms Algorithms to be used by islands
+     * @param algorithms Algorithms to be used by islands, handed out in order
      * @param minIslandPopSize Minimal population size for one island
-     * @return Vector of tuples: [populationSize, cycleCount, preferredWorkerId]
+     * @return Vector of tuples: [populationSize, cycleCount, preferredWorkerId, algorithm]
      */
-    /**
-     * Sends one minimum-size work unit to every connected worker that has no throughput sample yet,
-     * so that _generate_work_plan() has something to divide by. The evolved populations are discarded.
-     * A worker whose unit fails stays unmeasured and the plan falls back to an even share for it.
-     * @param problem The problem to measure on
-     * @param algorithms Algorithms to be used by islands, the first one is used for the measurement
-     * @param populationSize Individuals per measurement unit
-     */
-    void _calibrate_unmeasured_workers(const pagmo::problem& problem,
-                                       const std::vector<pagmo::algorithm>& algorithms,
-                                       size_t populationSize);
-
     std::vector<std::tuple<size_t, size_t, std::string, const pagmo::algorithm&>> _generate_work_plan(
-        const size_t islandCount, size_t populationSize, const std::vector<pagmo::algorithm>& algorithms, size_t
-        minIslandPopSize);
+        size_t populationSize, const std::vector<pagmo::algorithm>& algorithms, size_t minIslandPopSize);
 
 public:
     /**
