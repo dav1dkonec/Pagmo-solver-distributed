@@ -4,7 +4,7 @@
 #include <spdlog/spdlog.h>
 
 // One per linked image, created on first use; use_file_logger() and use_null_logger() only swap
-// its sinks. A dynamically loaded module holds its own instance, hence dist_log_sink below.
+// its sinks. A loaded module is a separate image and cannot reach it, hence dist_log_sink below.
 const std::shared_ptr<spdlog::logger>& dist_logger();
 
 void use_file_logger(const std::string& filePath, bool enableConsole = true);

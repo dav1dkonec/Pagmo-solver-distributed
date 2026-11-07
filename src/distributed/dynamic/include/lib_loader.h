@@ -88,7 +88,7 @@ public:
         }
     }
 
-    // The library's own logger instance is never configured, so it logs through the host's.
+    // A loaded library cannot reach the host's logger instance, so it is handed a sink instead.
     void install_log_sink(void (*sink)(int, const char*))
     {
         using installT = void (*)(void (*)(int, const char*));
