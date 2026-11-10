@@ -36,7 +36,7 @@ public:
      * - Constructs the distributed solver and its internal components
      * - The distributed_controller's server is started immediately on another thread, as this object is constructed
      *  - This means that workers can connect as soon as this object is constructed
-     * @param controllerAddress URL on which the distributed controller will run (e.g. "tcp://localhost:5000")
+     * @param controllerAddress URL on which the distributed controller will run (e.g. "tcp://localhost:5555")
      * @param expectedWorkerCount the expected amount of workers, the current amount connected to controller will be used if not specified
      * @param loadBalancingStrategy determines how populations are calculated for each island
      */

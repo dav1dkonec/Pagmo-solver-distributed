@@ -197,13 +197,13 @@ void print_help(char** argv)
         "  --benchmark-mo  Run multi-objective benchmarks\n"
         "\n"
         "Controller options:\n"
-        "  --address      <addr>  (default: tcp://0.0.0.0:5000)\n"
+        "  --address      <addr>  (default: tcp://0.0.0.0:5555)\n"
         "  --workers      <n>     Expected worker count (default: 2)\n"
         "  --strategy     <name>  (default: BY_PERFORMANCE)\n"
         "  --cache-dir    <dir>   (default: controller_cache)\n"
         "\n"
         "Worker options:\n"
-        "  --address      <addr>  (default: tcp://localhost:5000)\n"
+        "  --address      <addr>  (default: tcp://localhost:5555)\n"
         "  --mode         <name>  (default: ARCHIPELAGO_BASED)\n"
         "  --min-pop-size <n>     (default: 80)\n"
         "  --cache-dir    <dir>   (default: worker_cache)\n"
@@ -217,8 +217,8 @@ struct main_args
     bool isController = false;
 
     std::string address = ""; // Set by user
-    std::string defaultAddressWorker = "tcp://localhost:5000";
-    std::string defaultAddressController = "tcp://0.0.0.0:5000";
+    std::string defaultAddressWorker = "tcp://localhost:5555";
+    std::string defaultAddressController = "tcp://0.0.0.0:5555";
     size_t workers = 2;
 
     std::string strategy = "BY_PERFORMANCE";
