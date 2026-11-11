@@ -43,10 +43,11 @@ void distributed_controller::_handle_Workers_Socket_Msg()
             // Handle busy worker leave (if worker is allocated work)
             if (_workAllocationMap.contains(workerId))
             {
-                const auto [islandId, workData] = _workAllocationMap.at(workerId);
+                // Copied, because the erase below invalidates the record
+                const auto record = _workAllocationMap.at(workerId);
                 _workAllocationMap.erase(workerId);
                 // Call the same function which is called when island first requests work allocation
-                _allocate_island_work(islandId, workData);
+                _allocate_island_work(record.islandId, record.workData);
             }
         }
         break;
@@ -87,9 +88,10 @@ void distributed_controller::_handle_Workers_Socket_Msg()
 
             if (_workAllocationMap.contains(workerId))
             {
-                const auto [islandId, workData] = _workAllocationMap.at(workerId);
+                // Copied, because the erase below invalidates the record
+                const auto record = _workAllocationMap.at(workerId);
                 _workAllocationMap.erase(workerId);
-                _allocate_island_work(islandId, workData);
+                _allocate_island_work(record.islandId, record.workData);
             }
         }
         break;
@@ -200,7 +202,7 @@ void distributed_controller::_allocate_worker_to_island(const std::string& islan
 
     // Erase this id, worker is no longer free, make a record for this allocation
     _freeWorkersPool.erase(workerId);
-    _workAllocationMap.emplace(workerId, work_allocation_record{islandId, workData});
+    _workAllocationMap.emplace(workerId, work_allocation_record{islandId, workData, serializedData.generationCount});
 
     dist_logger()->debug("{} has been allocated {}", islandId, workerId);
 

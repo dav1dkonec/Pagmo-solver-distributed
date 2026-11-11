@@ -53,7 +53,8 @@ void default_controller_task(const std::string& address, const size_t expectedWo
     unsigned param = 2;
     udp_dll_wrapper probWrapper{"schwefel_udp", std::any{param}};
     const pagmo::problem prob{probWrapper};
-    pagmo::algorithm algo{pagmo::de(1500)};
+    constexpr size_t generationCount = 1500;
+    pagmo::algorithm algo{pagmo::de(generationCount)};
     algo.set_verbosity(0);
 
     distributed_solver ds{address, expectedWorkerCount, loadBalancingStrategy};
@@ -64,11 +65,11 @@ void default_controller_task(const std::string& address, const size_t expectedWo
 
     ds.wait_until_workers_connect();
 
-    ds.evolve(prob, {algo}, 1000);
+    ds.evolve(prob, {algo}, 1000, generationCount);
     ds.wait_until_completion();
     std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
-    ds.evolve(prob, {algo}, 1000);
+    ds.evolve(prob, {algo}, 1000, generationCount);
     ds.wait_until_completion();
     std::this_thread::sleep_for(std::chrono::milliseconds(5000));
 }

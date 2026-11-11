@@ -73,11 +73,13 @@ distributed_island::distributed_island() : _ctx{new zmq::context_t{}},
     _islandId = "island_" + uuid::v4::UUID::New().String();
 }
 
-distributed_island::distributed_island(const std::string& preferred_worker_id, const size_t cycle_count) :
+distributed_island::distributed_island(const std::string& preferred_worker_id, const size_t cycle_count,
+                                       const size_t generation_count) :
     _ctx{new zmq::context_t{}},
     _dealerSocket{new distributed::dealer_socket(*_ctx)},
     _preferredWorkerId(preferred_worker_id),
-    _cycleCount(cycle_count)
+    _cycleCount(cycle_count),
+    _generationCount(generation_count)
 {
     _islandId = "island_" + uuid::v4::UUID::New().String();
 }
@@ -112,7 +114,9 @@ void distributed_island::run_evolve(pagmo::island& isl) const
         _dealerSocket->connect("ipc://distributed_controller_islands_socket");
         dist_logger()->debug("Distributed island connected");
         _dealerSocket->send(MsgType::ALLOCATE_WORK,
-                            work_container{initial_algo, initial_pop, _preferredWorkerId, _cycleCount}
+                            work_container{
+                                initial_algo, initial_pop, _preferredWorkerId, _cycleCount, _generationCount
+                            }
         );
         dist_logger()->debug("Distributed island allocate work sent");
 

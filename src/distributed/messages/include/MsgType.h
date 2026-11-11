@@ -166,6 +166,8 @@ public:
     std::string preferredWorkerId;
     // Archipelago evolution cycle count for the worker
     size_t cycleCount{};
+    // Generations the algorithm runs per cycle. Set on the way out, left at 0 on the way back.
+    size_t generationCount{};
     // Time the worker spent computing, without transfer or serialization.
     // Set on the way back, left at 0 on the way out.
     uint64_t evolveTimeMs{};
@@ -177,11 +179,12 @@ public:
     size_t islandCount{};
 
     work_container(pagmo::algorithm algo, pagmo::population pop, std::string preferredWorker = "",
-                   const size_t cycleCount = 1) :
+                   const size_t cycleCount = 1, const size_t generationCount = 0) :
         algo(std::move(algo)),
         pop(std::move(pop)),
         preferredWorkerId(std::move(preferredWorker)),
-        cycleCount(cycleCount)
+        cycleCount(cycleCount),
+        generationCount(generationCount)
     {
     }
 
@@ -197,15 +200,15 @@ private:
     template <typename Archive>
     void save(Archive& ar, unsigned) const
     {
-        pagmo::detail::to_archive(ar, algo, pop, preferredWorkerId, cycleCount, evolveTimeMs, evolvedPopulation,
-                                  islandCount);
+        pagmo::detail::to_archive(ar, algo, pop, preferredWorkerId, cycleCount, generationCount, evolveTimeMs,
+                                  evolvedPopulation, islandCount);
     }
 
     template <typename Archive>
     void load(Archive& ar, unsigned)
     {
-        pagmo::detail::from_archive(ar, algo, pop, preferredWorkerId, cycleCount, evolveTimeMs, evolvedPopulation,
-                                    islandCount);
+        pagmo::detail::from_archive(ar, algo, pop, preferredWorkerId, cycleCount, generationCount, evolveTimeMs,
+                                    evolvedPopulation, islandCount);
     }
 
     BOOST_SERIALIZATION_SPLIT_MEMBER()

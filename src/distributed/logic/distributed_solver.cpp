@@ -169,7 +169,8 @@ distributed_solver::~distributed_solver()
 }
 
 void distributed_solver::evolve(const pagmo::problem& problem, const std::vector<pagmo::algorithm>& algorithms,
-                                const size_t populationSize, const size_t cycleCount, const size_t minIslandPopSize)
+                                const size_t populationSize, const size_t generationCount, const size_t cycleCount,
+                                const size_t minIslandPopSize)
 {
     // This will prevent interrupting the archipelago if it's already evolving
     if (_archipelago.status() == pagmo::evolve_status::busy ||
@@ -186,7 +187,7 @@ void distributed_solver::evolve(const pagmo::problem& problem, const std::vector
 
     for (const auto& [islandPopSize, islandCycleCount, preferredWorker, algorithm] : workPlan)
     {
-        distributed_island dist_island{preferredWorker, islandCycleCount};
+        distributed_island dist_island{preferredWorker, islandCycleCount, generationCount};
         auto isl = pagmo::island{dist_island, algorithm, problem, islandPopSize};
         // We set the initial population to this island (hints) if there are any
         _set_island_hints(isl);

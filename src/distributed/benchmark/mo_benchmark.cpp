@@ -30,7 +30,7 @@ void benchmark_compare_mo(distributed_solver& ds, const pagmo::problem& prob, be
     ds.wait_until_workers_connect();
 
     // Run metasolver and then each MO algorithm alone
-    benchmark_compare_runner(ds, prob, bench, popSize, moAlgs);
+    benchmark_compare_runner(ds, prob, bench, popSize, genCount, moAlgs);
 
     bench.end_current_measurement();
 }

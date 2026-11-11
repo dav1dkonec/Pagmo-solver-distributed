@@ -1,11 +1,11 @@
 #include "benchmark_runner.h"
 
 void benchmark_compare_runner(distributed_solver& ds, const pagmo::problem& prob, benchmark_stats& bench,
-    const size_t popSize, const std::vector<pagmo::algorithm>& algs)
+    const size_t popSize, const size_t genCount, const std::vector<pagmo::algorithm>& algs)
 {
     // First run the metasolver
     bench.start_timer();
-    ds.evolve(prob, algs, popSize, 10);
+    ds.evolve(prob, algs, popSize, genCount, 10);
     ds.wait_until_completion();
     bench.add_data_point(
         ds.get_best_individual(),
@@ -22,7 +22,7 @@ void benchmark_compare_runner(distributed_solver& ds, const pagmo::problem& prob
 
         // Using only ONE algorithm
         bench.start_timer();
-        ds.evolve(prob, {currentAlg}, popSize, 10);
+        ds.evolve(prob, {currentAlg}, popSize, genCount, 10);
         ds.wait_until_completion();
         bench.add_data_point(
             ds.get_best_individual(),

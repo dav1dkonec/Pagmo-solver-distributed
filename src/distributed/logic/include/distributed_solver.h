@@ -49,6 +49,7 @@ public:
     void evolve(const pagmo::problem& problem,
                 const std::vector<pagmo::algorithm>& algorithms,
                 size_t populationSize,
+                size_t generationCount,
                 size_t cycleCount = 1,
                 size_t minIslandPopSize = 80
     );
