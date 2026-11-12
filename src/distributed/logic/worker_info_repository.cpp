@@ -143,7 +143,7 @@ std::optional<worker_info> worker_info_repository::get_worker_info(
     return std::nullopt;
 }
 
-const std::unordered_set<std::string>& worker_info_repository::get_connected_workers()
+std::unordered_set<std::string> worker_info_repository::get_connected_workers()
 {
     std::scoped_lock lock(_mtx);
 

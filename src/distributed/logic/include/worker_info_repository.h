@@ -130,7 +130,7 @@ public:
 
     std::optional<worker_info> get_worker_info(const std::string& workerID);
 
-    const std::unordered_set<std::string>& get_connected_workers();
+    std::unordered_set<std::string> get_connected_workers();
 
     size_t get_worker_count();
 
