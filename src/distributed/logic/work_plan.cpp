@@ -13,25 +13,32 @@ namespace
     }
 }
 
-double throughput_with_all_cores(const node_capability& node)
+double work_rate_with_all_cores(const node_capability& node)
 {
-    return node.islandThroughput * static_cast<double>(std::max<size_t>(1, node.coreCount));
+    return node.islandWorkRate * static_cast<double>(std::max<size_t>(1, node.coreCount));
 }
 
-double predicted_time(const node_capability& node, const size_t share, const size_t minIslandPopSize)
+double predicted_time(const node_capability& node, const size_t share, const size_t generationCount,
+                      const size_t minIslandPopSize)
 {
     const size_t islands = std::clamp<size_t>(share / minIslandPopSize, 1, std::max<size_t>(1, node.coreCount));
-    const double nodeThroughput = node.islandThroughput * static_cast<double>(islands);
+    const double nodeRate = node.islandWorkRate * static_cast<double>(islands);
+    const double work = static_cast<double>(share) * static_cast<double>(std::max<size_t>(1, generationCount));
 
-    return nodeThroughput > 0 ? static_cast<double>(share) / nodeThroughput : 0;
+    return nodeRate > 0 ? work / nodeRate : 0;
 }
 
-size_t capacity_within(const node_capability& node, const double deadlineMs, const size_t minIslandPopSize)
+size_t capacity_within(const node_capability& node, const double deadlineMs, const size_t generationCount,
+                       const size_t minIslandPopSize)
 {
+    // The rate counts generations, the capacity counts individuals, so the generations divide out
+    const double generations = static_cast<double>(std::max<size_t>(1, generationCount));
+
     size_t capacity = 0;
     for (size_t islands = 1; islands <= node.coreCount; ++islands)
     {
-        const auto reachable = static_cast<size_t>(deadlineMs * node.islandThroughput * static_cast<double>(islands));
+        const auto reachable = static_cast<size_t>(
+            deadlineMs * node.islandWorkRate * static_cast<double>(islands) / generations);
 
         // Any fewer and one of the islands would be under the minimum size
         if (reachable < islands * minIslandPopSize)
@@ -51,7 +58,7 @@ size_t capacity_within(const node_capability& node, const double deadlineMs, con
 }
 
 std::vector<size_t> balanced_shares(const std::vector<node_capability>& nodes, const size_t populationSize,
-                                    const size_t minIslandPopSize)
+                                    const size_t generationCount, const size_t minIslandPopSize)
 {
     if (nodes.empty())
     {
@@ -59,16 +66,16 @@ std::vector<size_t> balanced_shares(const std::vector<node_capability>& nodes, c
     }
 
     // The leader can always take the whole population alone, so its time for that is the ceiling
-    double feasible = predicted_time(nodes.front(), populationSize, minIslandPopSize) + 1;
+    double feasible = predicted_time(nodes.front(), populationSize, generationCount, minIslandPopSize) + 1;
     double tooShort = 0;
 
     const auto fits = [&](const double deadline)
     {
         // The leader is not held to a ceiling, because it carries whatever the others cannot
-        size_t total = capacity_within(nodes.front(), deadline, minIslandPopSize);
+        size_t total = capacity_within(nodes.front(), deadline, generationCount, minIslandPopSize);
         for (size_t i = 1; i < nodes.size(); ++i)
         {
-            total += std::min(capacity_within(nodes.at(i), deadline, minIslandPopSize),
+            total += std::min(capacity_within(nodes.at(i), deadline, generationCount, minIslandPopSize),
                               share_ceiling(nodes.at(i), minIslandPopSize));
         }
 
@@ -92,12 +99,13 @@ std::vector<size_t> balanced_shares(const std::vector<node_capability>& nodes, c
     // The leader takes its own capacity first. Where the cluster has more capacity than the
     // population needs, the node served last gets nothing - that must not be the fastest one.
     std::vector<size_t> shares(nodes.size(), 0);
-    shares.front() = std::min(capacity_within(nodes.front(), feasible, minIslandPopSize), populationSize);
+    shares.front() = std::min(capacity_within(nodes.front(), feasible, generationCount, minIslandPopSize),
+                              populationSize);
     size_t unassigned = populationSize - shares.front();
 
     for (size_t i = 1; i < nodes.size() && unassigned > 0; ++i)
     {
-        const size_t capacity = std::min(capacity_within(nodes.at(i), feasible, minIslandPopSize),
+        const size_t capacity = std::min(capacity_within(nodes.at(i), feasible, generationCount, minIslandPopSize),
                                          share_ceiling(nodes.at(i), minIslandPopSize));
 
         shares.at(i) = std::min(capacity, unassigned);

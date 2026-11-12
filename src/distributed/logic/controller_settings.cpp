@@ -2,4 +2,5 @@
 
 void controller_settings::initialize()
 {
+    workerInfo.clear();
 }

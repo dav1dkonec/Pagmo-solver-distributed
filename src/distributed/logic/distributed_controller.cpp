@@ -55,13 +55,14 @@ void distributed_controller::_handle_Workers_Socket_Msg()
         {
             // Write stats into the worker info repository
             const auto workResults = vector_deserialize<work_container>(binary);
+            const auto& allocation = _workAllocationMap.at(workerId);
+
             _settings().workerInfo.worker_finished_work(workerId, workResults.evolvedPopulation,
                                                        workResults.algo.get_name(), workResults.evolveTimeMs,
-                                                       workResults.islandCount);
+                                                       workResults.islandCount, allocation.generationCount);
 
             // Pass results from worker to island
-            const auto myIslandId = _workAllocationMap.at(workerId).islandId;
-            _islandsSocket.send(myIslandId, MsgType::WORK_RESULTS, binary);
+            _islandsSocket.send(allocation.islandId, MsgType::WORK_RESULTS, binary);
 
             // Remove this {workerId, record} work allocation
             _workAllocationMap.erase(workerId);

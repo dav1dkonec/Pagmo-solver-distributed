@@ -51,7 +51,7 @@ TEST_CASE("Worker Info Repository - work tracking", "[worker-info]") {
         repo.worker_started_work("worker1");
         
         std::this_thread::sleep_for(std::chrono::milliseconds(20));
-        repo.worker_finished_work("worker1", 50, "DE", 12, 1);
+        repo.worker_finished_work("worker1", 50, "DE", 12, 1, 1);
         
         auto info = repo.get_worker_info("worker1");
         REQUIRE(info.has_value());
@@ -67,11 +67,11 @@ TEST_CASE("Worker Info Repository - work tracking", "[worker-info]") {
         
         repo.worker_started_work("worker1");
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        repo.worker_finished_work("worker1", 100, "DE", 5, 1);
+        repo.worker_finished_work("worker1", 100, "DE", 5, 1, 1);
         
         repo.worker_started_work("worker1");
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        repo.worker_finished_work("worker1", 200, "PSO", 7, 1);
+        repo.worker_finished_work("worker1", 200, "PSO", 7, 1, 1);
         
         auto info = repo.get_worker_info("worker1");
         REQUIRE(info->totalStats.processedPopulation == 300);
@@ -83,15 +83,15 @@ TEST_CASE("Worker Info Repository - work tracking", "[worker-info]") {
         
         repo.worker_started_work("worker1");
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        repo.worker_finished_work("worker1", 100, "DE", 4, 1);
+        repo.worker_finished_work("worker1", 100, "DE", 4, 1, 1);
         
         repo.worker_started_work("worker1");
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        repo.worker_finished_work("worker1", 150, "DE", 6, 1);
+        repo.worker_finished_work("worker1", 150, "DE", 6, 1, 1);
         
         repo.worker_started_work("worker1");
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        repo.worker_finished_work("worker1", 50, "PSO", 3, 1);
+        repo.worker_finished_work("worker1", 50, "PSO", 3, 1, 1);
         
         auto info = repo.get_worker_info("worker1");
         REQUIRE(info->statsByAlgorithm["DE"].processedPopulation == 250);
@@ -101,25 +101,25 @@ TEST_CASE("Worker Info Repository - work tracking", "[worker-info]") {
     }
 }
 
-TEST_CASE("Worker Info Repository - throughput", "[worker-info]") {
+TEST_CASE("Worker Info Repository - work rate", "[worker-info]") {
     worker_info_repository repo;
     repo.worker_joined("worker1");
 
-    SECTION("throughput is measured per island, not per node") {
+    SECTION("the rate is measured per island, not per node") {
         repo.worker_started_work("worker1");
-        repo.worker_finished_work("worker1", 800, "DE", 100, 4);
+        repo.worker_finished_work("worker1", 800, "DE", 100, 4, 1);
 
         // 800 individuals in 100 ms on 4 islands is 2 individuals per ms on each of them
-        REQUIRE(repo.get_worker_info("worker1")->totalStats.islandThroughput == 2.0);
+        REQUIRE(repo.get_worker_info("worker1")->totalStats.islandWorkRate == 2.0);
     }
 
     SECTION("a later sample ages the average instead of replacing it") {
         repo.worker_started_work("worker1");
-        repo.worker_finished_work("worker1", 100, "DE", 100, 1);
+        repo.worker_finished_work("worker1", 100, "DE", 100, 1, 1);
         repo.worker_started_work("worker1");
-        repo.worker_finished_work("worker1", 300, "DE", 100, 1);
+        repo.worker_finished_work("worker1", 300, "DE", 100, 1, 1);
 
-        const auto throughput = repo.get_worker_info("worker1")->totalStats.islandThroughput;
+        const auto throughput = repo.get_worker_info("worker1")->totalStats.islandWorkRate;
         REQUIRE(throughput > 1.0);
         REQUIRE(throughput < 3.0);
     }
@@ -131,12 +131,27 @@ TEST_CASE("Worker Info Repository - throughput", "[worker-info]") {
         REQUIRE(repo.get_worker_info("worker1")->coreCount == 4);
     }
 
-    SECTION("a plain join leaves the throughput record alone") {
+    SECTION("generations count towards the work, not just individuals") {
         repo.worker_started_work("worker1");
-        repo.worker_finished_work("worker1", 400, "DE", 100, 2);
+        repo.worker_finished_work("worker1", 800, "DE", 100, 4, 50);
+
+        // The same unit at 50 generations is 50 times the computing
+        REQUIRE(repo.get_worker_info("worker1")->totalStats.islandWorkRate == 100.0);
+    }
+
+    SECTION("an unstated generation count leaves the rate at individuals per millisecond") {
+        repo.worker_started_work("worker1");
+        repo.worker_finished_work("worker1", 800, "DE", 100, 4, 0);
+
+        REQUIRE(repo.get_worker_info("worker1")->totalStats.islandWorkRate == 2.0);
+    }
+
+    SECTION("a plain join leaves the work rate record alone") {
+        repo.worker_started_work("worker1");
+        repo.worker_finished_work("worker1", 400, "DE", 100, 2, 1);
 
         repo.worker_joined("worker1");
-        REQUIRE(repo.get_worker_info("worker1")->totalStats.islandThroughput == 2.0);
+        REQUIRE(repo.get_worker_info("worker1")->totalStats.islandWorkRate == 2.0);
     }
 }
 
@@ -170,7 +185,7 @@ TEST_CASE("Worker Info Repository - error handling", "[worker-info]") {
     
     SECTION("finish work on unknown throws") {
         REQUIRE_THROWS_AS(
-            repo.worker_finished_work("unknown", 100, "DE", 0, 1),
+            repo.worker_finished_work("unknown", 100, "DE", 0, 1, 1),
             std::runtime_error
         );
     }

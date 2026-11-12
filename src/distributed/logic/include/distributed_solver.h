@@ -24,12 +24,14 @@ class distributed_solver : public logger_control
      * Decides how the population is divided for this evolution cycle: one island per node that
      * can shorten the cycle, each sized so that the nodes finish at about the same time.
      * @param populationSize The total population size
+     * @param generationCount Generations every share is evolved for
      * @param algorithms Algorithms to be used by islands, handed out in order
      * @param minIslandPopSize Minimal population size for one island
      * @return Vector of tuples: [populationSize, cycleCount, preferredWorkerId, algorithm]
      */
     std::vector<std::tuple<size_t, size_t, std::string, const pagmo::algorithm&>> _generate_work_plan(
-        size_t populationSize, const std::vector<pagmo::algorithm>& algorithms, size_t minIslandPopSize);
+        size_t populationSize, size_t generationCount, const std::vector<pagmo::algorithm>& algorithms,
+        size_t minIslandPopSize);
 
 public:
     /**

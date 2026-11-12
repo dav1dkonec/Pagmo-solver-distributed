@@ -1,4 +1,5 @@
 #pragma once
+#include <boost/archive/archive_exception.hpp>
 #include <chrono>
 #include <mutex>
 #include <optional>
@@ -26,14 +27,14 @@ struct work_stats
     // Individuals the worker really evolved, as reported by the worker
     uint64_t processedPopulation = 0;
 
-    // Individuals per millisecond of computation on one island, aged so that recent units
-    // dominate. Per island rather than per node, so that units run at different island counts
-    // stay comparable; multiply by the island count to get the throughput of the whole node.
-    double islandThroughput = 0;
+    // Individuals times generations per millisecond of computation on one island, aged so that
+    // recent units dominate. Multiply by the island count for the rate of the whole node.
+    double islandWorkRate = 0;
     uint64_t samples = 0;
 
-    // Folds one finished unit into the cumulative totals and into the throughput average
-    void add_sample(uint64_t workTimeMs, uint64_t evolveTimeMs, uint64_t population, uint64_t islandCount);
+    // Folds one finished unit into the cumulative totals and into the work rate average
+    void add_sample(uint64_t workTimeMs, uint64_t evolveTimeMs, uint64_t population, uint64_t islandCount,
+                    uint64_t generationCount);
 
 private:
     //####################################
@@ -45,28 +46,22 @@ private:
     template <typename Archive>
     void serialize(Archive& ar, const unsigned version)
     {
+        if (version < 3)
+        {
+            // Earlier versions counted individuals without the generations, which is not a work
+            // rate and cannot be converted into one.
+            throw boost::archive::archive_exception(boost::archive::archive_exception::unsupported_class_version);
+        }
+
         ar & BOOST_SERIALIZATION_NVP(workTime);
         ar & BOOST_SERIALIZATION_NVP(evolveTime);
         ar & BOOST_SERIALIZATION_NVP(processedPopulation);
-
-        if (version == 1)
-        {
-            // Version 1 measured the node as a whole, which is not comparable with a per-island
-            // figure. Read it to keep the archive aligned and let the next unit re-learn.
-            double legacyThroughput = 0;
-            uint64_t legacySamples = 0;
-            ar & boost::serialization::make_nvp("throughput", legacyThroughput);
-            ar & boost::serialization::make_nvp("samples", legacySamples);
-        }
-        else if (version >= 2)
-        {
-            ar & BOOST_SERIALIZATION_NVP(islandThroughput);
-            ar & BOOST_SERIALIZATION_NVP(samples);
-        }
+        ar & BOOST_SERIALIZATION_NVP(islandWorkRate);
+        ar & BOOST_SERIALIZATION_NVP(samples);
     }
 };
 
-BOOST_CLASS_VERSION(work_stats, 2)
+BOOST_CLASS_VERSION(work_stats, 3)
 
 struct worker_info
 {
@@ -121,7 +116,7 @@ public:
     void worker_started_work(const std::string& workerID);
 
     void worker_finished_work(const std::string& workerID, size_t processedPopulation, const std::string& algoName,
-                              uint64_t evolveTimeMs, size_t islandCount);
+                              uint64_t evolveTimeMs, size_t islandCount, size_t generationCount);
 
     /**
      * Records what the worker itself knows about its hardware, see MsgType::WORKER_INFO. This is
@@ -129,6 +124,9 @@ public:
      * the node; a worker reconnecting with a stored record is admitted by worker_joined().
      */
     void worker_reported_cores(const std::string& workerID, size_t coreCount);
+
+    // Drops every record, so that settings which could not be read are started over
+    void clear();
 
     std::optional<worker_info> get_worker_info(const std::string& workerID);
 

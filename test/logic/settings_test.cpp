@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include "settings.h"
 #include "worker_settings.h"
+#include "controller_settings.h"
 #include <filesystem>
 #include <fstream>
 
@@ -69,4 +70,50 @@ TEST_CASE("Settings - worker settings", "[settings]") {
     }
     
     std::filesystem::remove(tempFile);
+}
+
+TEST_CASE("Settings - controller measurements", "[settings]") {
+    const std::string file = "controller_settings_test_" + std::to_string(time(nullptr)) + ".xml";
+
+    const auto store_one_measurement = [&file]() {
+        settings<controller_settings> s(file, false);
+        s().workerInfo.worker_joined("w1");
+        s().workerInfo.worker_reported_cores("w1", 4);
+        s().workerInfo.worker_started_work("w1");
+        s().workerInfo.worker_finished_work("w1", 320, "DE", 100, 4, 50);
+        s.save();
+    };
+
+    SECTION("a measurement survives a round trip through the file") {
+        store_one_measurement();
+
+        settings<controller_settings> s(file, false);
+        const auto info = s().workerInfo.get_worker_info("w1");
+        REQUIRE(info.has_value());
+        REQUIRE(info->totalStats.samples == 1);
+    }
+
+    SECTION("measurements from an older version are discarded, not fatal") {
+        store_one_measurement();
+
+        // Only the stored class version decides, so the fields themselves are never reached
+        std::string content;
+        {
+            std::ifstream in{file};
+            content.assign(std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{});
+        }
+        const std::string current = "version=\"3\"";
+        const auto at = content.find(current);
+        REQUIRE(at != std::string::npos);
+        content.replace(at, current.size(), "version=\"2\"");
+        {
+            std::ofstream out{file, std::ios::trunc};
+            out << content;
+        }
+
+        settings<controller_settings> s(file, false);
+        REQUIRE(!s().workerInfo.get_worker_info("w1").has_value());
+    }
+
+    std::filesystem::remove(file);
 }

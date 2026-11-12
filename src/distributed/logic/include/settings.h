@@ -1,6 +1,7 @@
 #pragma once
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <string>
 #include <concepts>
 #include <pagmo/s11n.hpp>
@@ -66,11 +67,22 @@ private:
                 throw std::runtime_error("Failed to open settings file: " + _settingsPath.string());
             }
 
-            // Deserialize
-            boost::archive::xml_iarchive ia(fStream);
-            ia >> BOOST_SERIALIZATION_NVP(_settings);
+            try
+            {
+                // Deserialize
+                boost::archive::xml_iarchive ia(fStream);
+                ia >> BOOST_SERIALIZATION_NVP(_settings);
 
-            return;
+                return;
+            }
+            catch (const boost::archive::archive_exception& e)
+            {
+                // The file only caches what the nodes have shown, so a run that cannot read it
+                // clears it and measures again. initialize() does the clearing, because a
+                // half-read archive leaves records behind.
+                std::cerr << "Discarding " << _settingsPath.string() << " and measuring again: "
+                    << e.what() << std::endl;
+            }
         }
 
         // Settings file doesn't exist, call the initialize function of the struct to use initial default values

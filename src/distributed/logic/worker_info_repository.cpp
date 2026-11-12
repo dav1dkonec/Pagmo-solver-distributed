@@ -11,18 +11,21 @@ namespace
 }
 
 void work_stats::add_sample(const uint64_t workTimeMs, const uint64_t evolveTimeMs, const uint64_t population,
-                            const uint64_t islandCount)
+                            const uint64_t islandCount, const uint64_t generationCount)
 {
     workTime += workTimeMs;
     evolveTime += evolveTimeMs;
     processedPopulation += population;
 
-    const double sample = safe_divide(population, evolveTimeMs * std::max<uint64_t>(1, islandCount));
+    // An unstated generation count counts as one, which degrades the rate to individuals per
+    // millisecond. Multiplied in last, so that a reported population cannot overflow the product.
+    const double sample = safe_divide(population, evolveTimeMs * std::max<uint64_t>(1, islandCount))
+        * static_cast<double>(std::max<uint64_t>(1, generationCount));
 
     // The first sample has nothing to age against, so it seeds the average.
-    islandThroughput = samples == 0
-                           ? sample
-                           : Throughput_Smoothing * sample + (1 - Throughput_Smoothing) * islandThroughput;
+    islandWorkRate = samples == 0
+                         ? sample
+                         : Throughput_Smoothing * sample + (1 - Throughput_Smoothing) * islandWorkRate;
     ++samples;
 }
 
@@ -88,7 +91,7 @@ void worker_info_repository::worker_reported_cores(const std::string& workerID, 
 
 void worker_info_repository::worker_finished_work(const std::string& workerID, const size_t processedPopulation,
                                                   const std::string& algoName, const uint64_t evolveTimeMs,
-                                                  const size_t islandCount)
+                                                  const size_t islandCount, const size_t generationCount)
 {
     std::scoped_lock lock(_mtx);
     dist_logger()->info("Worker finished work - info collected");
@@ -104,13 +107,24 @@ void worker_info_repository::worker_finished_work(const std::string& workerID, c
     const auto endTime = std::chrono::high_resolution_clock::now();
     const auto workTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
 
-    wInfo.totalStats.add_sample(workTime, evolveTimeMs, processedPopulation, islandCount);
-    wInfo.statsByAlgorithm[algoName].add_sample(workTime, evolveTimeMs, processedPopulation, islandCount);
+    wInfo.totalStats.add_sample(workTime, evolveTimeMs, processedPopulation, islandCount, generationCount);
+    wInfo.statsByAlgorithm[algoName].add_sample(workTime, evolveTimeMs, processedPopulation, islandCount,
+                                                generationCount);
 
-    dist_logger()->debug("{} round-trip {} ms, of which {} ms computing {} individuals on {} islands, "
-                         "throughput {:.5f} ind/ms per island",
-                         workerID, workTime, evolveTimeMs, processedPopulation, islandCount,
-                         wInfo.totalStats.islandThroughput);
+    dist_logger()->debug("{} round-trip {} ms, of which {} ms computing {} individuals over {} generations on {} "
+                         "islands, work rate {:.5f} ind*gen/ms per island",
+                         workerID, workTime, evolveTimeMs, processedPopulation, generationCount, islandCount,
+                         wInfo.totalStats.islandWorkRate);
+}
+
+void worker_info_repository::clear()
+{
+    {
+        std::scoped_lock lock(_mtx);
+        _connectedWorkers.clear();
+        _workerRecords.clear();
+    }
+    _cv.notify_all();
 }
 
 std::optional<worker_info> worker_info_repository::get_worker_info(
