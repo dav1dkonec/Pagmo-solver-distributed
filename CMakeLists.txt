@@ -22,8 +22,11 @@ message(STATUS "Distributed solver runtime output directory: ${DISTRIBUTED_SOLVE
 
 #########################################################################################
 # EIGEN 3
+# Only the headers are used. Eigen's tests, BLAS and LAPACK would enable Fortran with whatever
+# compiler is on PATH, which on Windows can be MinGW's gfortran driven with MSVC flags.
 execute_process(
         COMMAND cmake -S . -B ./build/ -G ${CMAKE_GENERATOR}
+        -DEIGEN_BUILD_TESTING=OFF -DEIGEN_BUILD_BLAS=OFF -DEIGEN_BUILD_LAPACK=OFF
         -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
         -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
         -DCMAKE_PREFIX_PATH=${CMAKE_PREFIX_PATH}
