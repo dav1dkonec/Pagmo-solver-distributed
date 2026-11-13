@@ -264,6 +264,14 @@ void distributed_worker::_archipelago_based_worker(pagmo::algorithm& algo, pagmo
 
 void distributed_worker::_start_worker_thread(const std::vector<std::byte>& workData)
 {
+    if (_workerThread.joinable())
+    {
+        // Assigning over a running thread calls std::terminate, so the unit is refused instead.
+        // The controller is not meant to send one while this worker is busy.
+        dist_logger()->critical("Refusing a work unit that arrived while the previous one is still running");
+        return;
+    }
+
     // We start the new thread right here, any further blocking calls won't affect the main thread
     _workerThread = std::thread(
         [this, workData]()
