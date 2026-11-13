@@ -24,13 +24,11 @@ std::vector<pagmo::algorithm> construct_mo_algorithms(const size_t genCount)
 void benchmark_compare_mo(distributed_solver& ds, const pagmo::problem& prob, benchmark_stats& bench,
                           const size_t popSize, const size_t genCount)
 {
-    const std::vector<pagmo::algorithm> moAlgs = construct_mo_algorithms(genCount);
-
     std::cout << "MO benchmark waiting for " << ds.get_expected_worker_count() << " workers to connect..." << std::endl;
     ds.wait_until_workers_connect();
 
     // Run metasolver and then each MO algorithm alone
-    benchmark_compare_runner(ds, prob, bench, popSize, genCount, moAlgs);
+    benchmark_compare_runner(ds, prob, bench, popSize, genCount, construct_mo_algorithms);
 
     bench.end_current_measurement();
 }

@@ -41,6 +41,25 @@ size_t capacity_within(const node_capability& node, double deadlineMs, size_t ge
                        size_t minIslandPopSize);
 
 /**
+ * Generations the node can evolve this share for by the deadline. The dual of capacity_within():
+ * there the generation count is given and the individuals follow, here it is the other way round.
+ */
+size_t generations_within(const node_capability& node, size_t share, double deadlineMs,
+                          size_t minIslandPopSize);
+
+/**
+ * Shares that give every node the same number of individuals, with the remainder left to the
+ * leader. Nodes the population cannot reach with a whole island each are left with nothing,
+ * starting from the slowest.
+ * @param nodes Ordered by descending work_rate_with_all_cores(); the first one leads
+ * @param populationSize Individuals to divide, which the shares add up to exactly
+ * @param minIslandPopSize Smallest population an island can hold
+ * @return One share per node, in the order the nodes were given
+ */
+std::vector<size_t> equal_shares(const std::vector<node_capability>& nodes, size_t populationSize,
+                                 size_t minIslandPopSize);
+
+/**
  * Shares that have every node finish by one common deadline, as short a one as the nodes can keep
  * between them. A node too slow to fill a whole island by then is left with nothing, because it
  * could only become the makespan it was meant to reduce.

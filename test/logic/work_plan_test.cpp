@@ -77,6 +77,67 @@ TEST_CASE("Work plan - capacity within a deadline", "[work-plan]") {
     }
 }
 
+TEST_CASE("Work plan - generations that fit a deadline", "[work-plan]") {
+    SECTION("it is the inverse of the predicted time") {
+        const size_t share = 8 * MIN_ISLAND;
+        const double deadline = predicted_time(fast, share, 50, MIN_ISLAND);
+
+        // Floored to whole generations, so the last one may not fit
+        const size_t generations = generations_within(fast, share, deadline, MIN_ISLAND);
+        REQUIRE(generations >= 49);
+        REQUIRE(generations <= 50);
+    }
+
+    SECTION("twice the deadline is twice the depth") {
+        const size_t share = 4 * MIN_ISLAND;
+        const double deadline = predicted_time(slow, share, 50, MIN_ISLAND);
+
+        const auto once = generations_within(slow, share, deadline, MIN_ISLAND);
+        const auto twice = generations_within(slow, share, 2 * deadline, MIN_ISLAND);
+        REQUIRE(static_cast<double>(twice) == Catch::Approx(2.0 * static_cast<double>(once)).epsilon(0.05));
+    }
+
+    SECTION("a deadline too short for one generation is worth nothing") {
+        const double tooShort = predicted_time(slow, MIN_ISLAND, GEN, MIN_ISLAND) / 2;
+        REQUIRE(generations_within(slow, MIN_ISLAND, tooShort, MIN_ISLAND) == 0);
+    }
+
+    SECTION("a node with no share runs nothing") {
+        REQUIRE(generations_within(fast, 0, 1000.0, MIN_ISLAND) == 0);
+    }
+}
+
+TEST_CASE("Work plan - equal shares", "[work-plan]") {
+    SECTION("the shares add up to the whole population") {
+        for (const size_t population : {240, 960, 1920, 5000}) {
+            const auto shares = equal_shares({fast, slow}, population, MIN_ISLAND);
+            REQUIRE(std::accumulate(shares.begin(), shares.end(), size_t{0}) == population);
+        }
+    }
+
+    SECTION("capability makes no difference to the size of a share") {
+        const auto shares = equal_shares({fast, slow}, 1920, MIN_ISLAND);
+        REQUIRE(shares.at(0) == shares.at(1));
+    }
+
+    SECTION("the slowest nodes drop out when the population cannot fill an island each") {
+        // 160 individuals reach two islands of 80, so the last two of the four get nothing
+        std::vector<node_capability> cluster(4, measured("node", 4, 0.0004));
+        const auto shares = equal_shares(cluster, 2 * MIN_ISLAND, MIN_ISLAND);
+
+        REQUIRE(shares.at(0) == MIN_ISLAND);
+        REQUIRE(shares.at(1) == MIN_ISLAND);
+        REQUIRE(shares.at(2) == 0);
+        REQUIRE(shares.at(3) == 0);
+    }
+
+    SECTION("a lone node takes everything") {
+        const auto shares = equal_shares({fast}, 960, MIN_ISLAND);
+        REQUIRE(shares.size() == 1);
+        REQUIRE(shares.at(0) == 960);
+    }
+}
+
 TEST_CASE("Work plan - generations against the deadline", "[work-plan]") {
     SECTION("twice the generations fits half as many individuals into the same deadline") {
         const double deadline = 10 * MIN_ISLAND / (4 * 0.00038);

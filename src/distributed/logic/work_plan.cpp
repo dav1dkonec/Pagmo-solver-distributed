@@ -57,6 +57,43 @@ size_t capacity_within(const node_capability& node, const double deadlineMs, con
     return capacity;
 }
 
+size_t generations_within(const node_capability& node, const size_t share, const double deadlineMs,
+                          const size_t minIslandPopSize)
+{
+    if (share == 0)
+    {
+        return 0;
+    }
+
+    const size_t islands = std::clamp<size_t>(share / minIslandPopSize, 1, std::max<size_t>(1, node.coreCount));
+    const double work = deadlineMs * node.islandWorkRate * static_cast<double>(islands);
+
+    return static_cast<size_t>(work / static_cast<double>(share));
+}
+
+std::vector<size_t> equal_shares(const std::vector<node_capability>& nodes, const size_t populationSize,
+                                 const size_t minIslandPopSize)
+{
+    if (nodes.empty())
+    {
+        return {};
+    }
+
+    // The slowest nodes drop out first, because the leader is the one that carries the remainder
+    const size_t admitted = std::max<size_t>(1, std::min(nodes.size(), populationSize / minIslandPopSize));
+    const size_t base = populationSize / admitted;
+
+    std::vector<size_t> shares(nodes.size(), 0);
+    for (size_t i = 0; i < admitted; ++i)
+    {
+        shares.at(i) = base;
+    }
+
+    shares.front() += populationSize - base * admitted;
+
+    return shares;
+}
+
 std::vector<size_t> balanced_shares(const std::vector<node_capability>& nodes, const size_t populationSize,
                                     const size_t generationCount, const size_t minIslandPopSize)
 {
