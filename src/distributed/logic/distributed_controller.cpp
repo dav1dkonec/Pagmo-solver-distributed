@@ -21,8 +21,9 @@ void distributed_controller::_handle_Workers_Socket_Msg()
     switch (type)
     {
     case MsgType::WORKER_JOIN:
-        // Do nothing if we already have the worker saved as "joined"
-        if (_freeWorkersPool.contains(workerId))
+        // A worker serving a unit is not in the free pool, so testing that alone let a repeated
+        // join hand it a second unit, which kills it
+        if (_freeWorkersPool.contains(workerId) || _workAllocationMap.contains(workerId))
             break;
 
         dist_logger()->info("Worker {} joined", workerId);
