@@ -1,6 +1,6 @@
 [submodule "external/pagmo"]
 	path = external/pagmo
-	url = https://github.com/jonas-s-s-s/pagmo2
+	url = https://github.com/dav1dkonec/pagmo2
 [submodule "external/Eigen3"]
 	path = external/Eigen3
 	url = https://github.com/SmartCGMS/Eigen3.git
