@@ -1,12 +1,33 @@
 #include "distributed_controller.h"
 #include "logger_init.h"
 
+#include <cmath>
 #include <iostream>
 
 #include "vector_deserialize.h"
 #include "vector_istreambuf.h"
 #include "udp_registry.h"
 #include "blob_registry.h"
+
+namespace
+{
+    // A node that hands back nothing finite computed nothing usable, however fast it was about it
+    bool holds_any_finite_fitness(const pagmo::population& pop)
+    {
+        for (const auto& fitness : pop.get_f())
+        {
+            for (const double value : fitness)
+            {
+                if (std::isfinite(value))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+}
 
 //#####################################################################################
 //# Handling of socket messages
@@ -57,6 +78,20 @@ void distributed_controller::_handle_Workers_Socket_Msg()
             // Write stats into the worker info repository
             const auto workResults = vector_deserialize<work_container>(binary);
             const auto& allocation = _workAllocationMap.at(workerId);
+
+            if (!holds_any_finite_fitness(workResults.pop))
+            {
+                // Measured, this would credit the worker for being fast at producing nothing
+                dist_logger()->warn("Worker {} returned no finite fitness at all, so the unit is "
+                                    "handed to another node and left out of the measurements", workerId);
+
+                const auto record = allocation;
+                _freeWorkersPool.erase(workerId);
+                _settings().workerInfo.worker_left(workerId);
+                _workAllocationMap.erase(workerId);
+                _allocate_island_work(record.islandId, record.workData);
+                break;
+            }
 
             _settings().workerInfo.worker_finished_work(workerId, workResults.evolvedPopulation,
                                                        workResults.algo.get_name(), workResults.evolveTimeMs,
