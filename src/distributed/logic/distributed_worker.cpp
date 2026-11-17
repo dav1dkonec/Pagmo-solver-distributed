@@ -239,6 +239,8 @@ void distributed_worker::_archipelago_based_worker(pagmo::algorithm& algo, pagmo
     dist_logger()->debug("Using algorithm: {}", algo.get_name());
     archi.evolve(archiCycleCount);
     archi.wait_check();
+    dist_logger()->info("Node archipelago: {} migrants accepted between {} islands over {} cycles",
+                        archi.get_migration_log().size(), archi.size(), archiCycleCount);
 
     // 5) Merge individuals (and their fitness) from all islands into two vectors
     const auto [allPopulations, allFitnesses] = merge_populations(archi);

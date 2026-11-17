@@ -123,7 +123,7 @@ std::vector<island_assignment> distributed_solver::_generate_work_plan(
         {
             // Empty worker id, it doesn't matter because all workers get the same amount of work
             output.push_back({
-                .populationSize = islandPop, .cycleCount = 1, .generationCount = generationCount,
+                .populationSize = islandPop, .cycleCount = _islandCycleCount, .generationCount = generationCount,
                 .preferredWorkerId = "", .algorithmIndex = chooseAlgorithm()
             });
         }
@@ -133,9 +133,13 @@ std::vector<island_assignment> distributed_solver::_generate_work_plan(
 
     // OPTION 2: one island per node that the deadline leaves with work to do, sized so that they
     // all finish at about the same time
+    // A unit runs its generations on every cycle of the node's own archipelago, so that product
+    // is what the node is measured and planned on
+    const size_t unitGenerations = generationCount * _islandCycleCount;
+
     auto shares = _heterogeneityPolicy == heterogeneity_policy::BY_GENERATIONS
                       ? equal_shares(nodes, populationSize, minIslandPopSize)
-                      : balanced_shares(nodes, populationSize, generationCount, minIslandPopSize);
+                      : balanced_shares(nodes, populationSize, unitGenerations, minIslandPopSize);
 
     // The fastest node carries the cycle even when the population is smaller than one island
     shares.front() = std::max(minIslandPopSize, shares.front());
@@ -164,7 +168,7 @@ std::vector<island_assignment> distributed_solver::_generate_work_plan(
     // The leader sets the pace by carrying its own share at the full generation count, and the
     // others go as deep as that leaves them
     const size_t leaderPop = ceil_to_multiple(shares.front(), 4);
-    const double deadlineMs = predicted_time(nodes.front(), leaderPop, generationCount, minIslandPopSize);
+    const double deadlineMs = predicted_time(nodes.front(), leaderPop, unitGenerations, minIslandPopSize);
 
     for (size_t i = 0; i < nodes.size(); ++i)
     {
@@ -180,12 +184,13 @@ std::vector<island_assignment> distributed_solver::_generate_work_plan(
         // Make sure it's divisible by 4 (some algorithms require this)
         const size_t islandPop = ceil_to_multiple(shares.at(i), 4);
 
-        // The leader runs the full count by definition, since the deadline is its own time for it
+        // The leader runs the full count by definition, since the deadline is its own time for it.
+        // What fits the deadline is shared out between the node's own cycles.
         const size_t islandGenerations = i == 0 || !fitDepth.at(i)
                                              ? generationCount
                                              : std::min(generationCount,
                                                         generations_within(node, islandPop, deadlineMs,
-                                                                           minIslandPopSize));
+                                                                           minIslandPopSize) / _islandCycleCount);
         if (islandGenerations == 0)
         {
             dist_logger()->info("Leaving {} out of this cycle: it cannot finish a single generation of {} "
@@ -193,13 +198,14 @@ std::vector<island_assignment> distributed_solver::_generate_work_plan(
             continue;
         }
 
-        dist_logger()->debug("{} has been assigned {} individuals over {} generations: {} cores at {:.5f} "
-                             "ind*gen/ms per island, predicted {:.0f} s", node.workerId, islandPop,
-                             islandGenerations, node.coreCount, node.islandWorkRate,
-                             predicted_time(node, islandPop, islandGenerations, minIslandPopSize) / 1000);
+        dist_logger()->debug("{} has been assigned {} individuals over {} generations x {} cycles: {} cores at "
+                             "{:.5f} ind*gen/ms per island, predicted {:.0f} s", node.workerId, islandPop,
+                             islandGenerations, _islandCycleCount, node.coreCount, node.islandWorkRate,
+                             predicted_time(node, islandPop, islandGenerations * _islandCycleCount,
+                                            minIslandPopSize) / 1000);
 
         output.push_back({
-            .populationSize = islandPop, .cycleCount = 1, .generationCount = islandGenerations,
+            .populationSize = islandPop, .cycleCount = _islandCycleCount, .generationCount = islandGenerations,
             .preferredWorkerId = node.workerId, .algorithmIndex = chooseAlgorithm()
         });
     }
@@ -209,9 +215,11 @@ std::vector<island_assignment> distributed_solver::_generate_work_plan(
 
 
 distributed_solver::distributed_solver(const std::string& controllerAddress, const size_t expectedWorkerCount,
-    const load_balancing_strategy loadBalancingStrategy, const heterogeneity_policy heterogeneityPolicy):
+    const load_balancing_strategy loadBalancingStrategy, const heterogeneity_policy heterogeneityPolicy,
+    const size_t islandCycleCount):
     _controller(controllerAddress), _expectedWorkerCount(expectedWorkerCount),
-    _loadBalancingStrategy(loadBalancingStrategy), _heterogeneityPolicy(heterogeneityPolicy)
+    _loadBalancingStrategy(loadBalancingStrategy), _heterogeneityPolicy(heterogeneityPolicy),
+    _islandCycleCount(std::max<size_t>(1, islandCycleCount))
 {
     _controller.run_server();
 }

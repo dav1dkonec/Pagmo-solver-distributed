@@ -52,6 +52,9 @@ class distributed_solver : public logger_control
 
     heterogeneity_policy _heterogeneityPolicy;
 
+    // Cycles of each node's own archipelago per unit; migrants move between its cores only then
+    size_t _islandCycleCount;
+
     distributed_controller _controller;
     size_t _expectedWorkerCount;
 
@@ -85,12 +88,14 @@ public:
      * @param expectedWorkerCount the expected amount of workers, the current amount connected to controller will be used if not specified
      * @param loadBalancingStrategy determines how populations are calculated for each island
      * @param heterogeneityPolicy determines what a node too slow to keep the pace gives up
+     * @param islandCycleCount cycles each node runs its own archipelago for within one unit
      */
     explicit distributed_solver(const std::string& controllerAddress, const size_t expectedWorkerCount = 1,
                                 load_balancing_strategy loadBalancingStrategy =
                                     load_balancing_strategy::BY_PERFORMANCE,
                                 heterogeneity_policy heterogeneityPolicy =
-                                    heterogeneity_policy::BY_POPULATION);
+                                    heterogeneity_policy::BY_POPULATION,
+                                size_t islandCycleCount = 1);
 
     ~distributed_solver();;
 

@@ -95,7 +95,7 @@ void distributed_controller::_handle_Workers_Socket_Msg()
 
             _settings().workerInfo.worker_finished_work(workerId, workResults.evolvedPopulation,
                                                        workResults.algo.get_name(), workResults.evolveTimeMs,
-                                                       workResults.islandCount, allocation.generationCount);
+                                                       workResults.islandCount, allocation.unitGenerations);
 
             // Pass results from worker to island
             _islandsSocket.send(allocation.islandId, MsgType::WORK_RESULTS, binary);
@@ -239,7 +239,9 @@ void distributed_controller::_allocate_worker_to_island(const std::string& islan
 
     // Erase this id, worker is no longer free, make a record for this allocation
     _freeWorkersPool.erase(workerId);
-    _workAllocationMap.emplace(workerId, work_allocation_record{islandId, workData, serializedData.generationCount});
+    _workAllocationMap.emplace(workerId, work_allocation_record{
+                                   islandId, workData, serializedData.generationCount * serializedData.cycleCount
+                               });
 
     dist_logger()->debug("{} has been allocated {}", islandId, workerId);
 

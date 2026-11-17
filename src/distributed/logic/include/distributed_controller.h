@@ -18,9 +18,10 @@ struct work_allocation_record
 {
     std::string islandId;
     std::vector<std::byte> workData;
-    // The count the controller sent out. The one the worker sends back is ignored, because this
-    // figure feeds the planner and a node must not size its own share.
-    size_t generationCount{};
+    // Generations the unit runs in all, per cycle times the node's cycles, as the controller sent
+    // them out. The worker's answer is ignored: this feeds the planner, and a node must not size
+    // its own share.
+    size_t unitGenerations{};
 };
 
 
