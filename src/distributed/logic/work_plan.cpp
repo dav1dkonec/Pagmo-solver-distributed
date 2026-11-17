@@ -68,7 +68,8 @@ size_t generations_within(const node_capability& node, const size_t share, const
     const size_t islands = std::clamp<size_t>(share / minIslandPopSize, 1, std::max<size_t>(1, node.coreCount));
     const double work = deadlineMs * node.islandWorkRate * static_cast<double>(islands);
 
-    return static_cast<size_t>(work / static_cast<double>(share));
+    // A share that fits exactly must not lose a generation to rounding in the division
+    return static_cast<size_t>(work / static_cast<double>(share) * (1.0 + 1e-9));
 }
 
 std::vector<size_t> equal_shares(const std::vector<node_capability>& nodes, const size_t populationSize,

@@ -79,13 +79,17 @@ TEST_CASE("Work plan - capacity within a deadline", "[work-plan]") {
 
 TEST_CASE("Work plan - generations that fit a deadline", "[work-plan]") {
     SECTION("it is the inverse of the predicted time") {
-        const size_t share = 8 * MIN_ISLAND;
-        const double deadline = predicted_time(fast, share, 50, MIN_ISLAND);
-
-        // Floored to whole generations, so the last one may not fit
-        const size_t generations = generations_within(fast, share, deadline, MIN_ISLAND);
-        REQUIRE(generations >= 49);
-        REQUIRE(generations <= 50);
+        // Equal nodes must get equal depth, so a share that exactly fits may not lose a
+        // generation to rounding; 8 cores at 0.00121 with 160 individuals is a measured case
+        const node_capability mac = measured("mac", 8, 0.00121);
+        for (const auto& node : {fast, slow, mac}) {
+            for (const size_t share : {2 * MIN_ISLAND, 4 * MIN_ISLAND, 8 * MIN_ISLAND}) {
+                for (const size_t generations : {1, 2, 3, 50, 96}) {
+                    const double deadline = predicted_time(node, share, generations, MIN_ISLAND);
+                    REQUIRE(generations_within(node, share, deadline, MIN_ISLAND) == generations);
+                }
+            }
+        }
     }
 
     SECTION("twice the deadline is twice the depth") {
