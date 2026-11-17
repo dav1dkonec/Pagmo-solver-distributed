@@ -65,6 +65,15 @@ void distributed_worker::_handle_Worker_Socket_Msg()
         _threadSocket.send("worker_blob_handler", MsgType::BLOB_BINARY, binary);
         break;
 
+    case MsgType::RESEND_RESULTS:
+        // Still computing means the result has not been sent yet and will arrive on its own
+        if (!_workerThread.joinable() && !_lastResults.empty())
+        {
+            dist_logger()->info("Resending the last result after a reconnect");
+            _workerSocket.send(MsgType::WORK_RESULTS, _lastResults);
+        }
+        break;
+
     default:
         dist_logger()->warn("WARNING: controller sent unhandled message type: {}", static_cast<int>(type));
     }
@@ -79,6 +88,7 @@ void distributed_worker::_handle_Thread_Socket_Msg()
     case MsgType::WORK_RESULTS:
         // The standard execution path - worker thread completed work and returned results
         _workerThread.join();
+        _lastResults = binary;
         _workerSocket.send(MsgType::WORK_RESULTS, binary);
         break;
 
@@ -273,6 +283,9 @@ void distributed_worker::_start_worker_thread(const std::vector<std::byte>& work
         dist_logger()->critical("Refusing a work unit that arrived while the previous one is still running");
         return;
     }
+
+    // New work means the controller has taken the previous result
+    _lastResults.clear();
 
     // We start the new thread right here, any further blocking calls won't affect the main thread
     _workerThread = std::thread(

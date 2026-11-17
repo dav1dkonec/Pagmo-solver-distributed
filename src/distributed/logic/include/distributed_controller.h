@@ -1,4 +1,6 @@
 #pragma once
+#include <atomic>
+#include <chrono>
 #include <thread>
 #include <unordered_set>
 
@@ -50,6 +52,12 @@ class distributed_controller
     std::unordered_set<std::string> _freeWorkersPool{};
     // Pairs of {workerID, work record} indicate which worker is currently being used by which island
     std::unordered_map<std::string, work_allocation_record> _workAllocationMap{};
+    // Workers that dropped off while holding a unit, and since when; they keep it while they may rejoin
+    std::unordered_map<std::string, std::chrono::steady_clock::time_point> _departedWorkers{};
+    // How long a departed worker keeps its unit; atomic because the solver sets it from another thread
+    std::atomic<long long> _rejoinTimeoutMs{60'000};
+
+    void _expire_departed_workers();
 
     void _add_free_worker(const std::string& workerId);
     void _handle_Workers_Socket_Msg();
@@ -63,12 +71,15 @@ class distributed_controller
 public:
     explicit distributed_controller(const std::string& controllerAddress,
                                     int heartbeatInterval = 1000,
-                                    int heartbeatTimeout = 3000,
+                                    int heartbeatTimeout = 15000,
                                     int reconnectIvlMax = 1000,
                                     const std::filesystem::path& settingsFilePath = "./controller_settings.xml"
                                     );
 
     void run_server();
+
+    // A worker that drops off and is not back within this long loses its unit to another node
+    void set_rejoin_timeout(std::chrono::milliseconds timeout);
 
     ~distributed_controller();
 

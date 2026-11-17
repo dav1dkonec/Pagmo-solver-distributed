@@ -44,6 +44,8 @@ class distributed_worker : public logger_control
 
     // Work-related code should run on this thread, so we don't block the client message loop
     std::thread _workerThread;
+    // The last result sent, kept until new work arrives, in case it was lost on a dropped connection
+    std::vector<std::byte> _lastResults{};
     // Cannot use pair_socket here, because we also need udp_registry's handler to send messages to socket too
     distributed::router_socket _threadSocket;
 

@@ -42,10 +42,19 @@ void distributed_controller::_handle_Workers_Socket_Msg()
     switch (type)
     {
     case MsgType::WORKER_JOIN:
-        // A worker serving a unit is not in the free pool, so testing that alone let a repeated
-        // join hand it a second unit, which kills it
-        if (_freeWorkersPool.contains(workerId) || _workAllocationMap.contains(workerId))
+        if (_freeWorkersPool.contains(workerId))
             break;
+
+        // A worker serving a unit is not in the free pool, so a rejoin must not hand it a second
+        // unit. It keeps its own, and resends the result in case that was lost while it was away.
+        if (_workAllocationMap.contains(workerId))
+        {
+            dist_logger()->info("Worker {} rejoined and keeps its unit", workerId);
+            _departedWorkers.erase(workerId);
+            _settings().workerInfo.worker_joined(workerId);
+            _workersSocket.send(workerId, MsgType::RESEND_RESULTS);
+            break;
+        }
 
         dist_logger()->info("Worker {} joined", workerId);
 
@@ -62,19 +71,26 @@ void distributed_controller::_handle_Workers_Socket_Msg()
             _freeWorkersPool.erase(workerId);
             _settings().workerInfo.worker_left(workerId);
 
-            // Handle busy worker leave (if worker is allocated work)
+            // A busy worker keeps its unit for now: a heartbeat lost under load or a short network
+            // outage looks the same as a dead node, and only a node that stays away loses it
             if (_workAllocationMap.contains(workerId))
             {
-                // Copied, because the erase below invalidates the record
-                const auto record = _workAllocationMap.at(workerId);
-                _workAllocationMap.erase(workerId);
-                // Call the same function which is called when island first requests work allocation
-                _allocate_island_work(record.islandId, record.workData);
+                _departedWorkers.insert_or_assign(workerId, std::chrono::steady_clock::now());
             }
         }
         break;
     case MsgType::WORK_RESULTS:
         {
+            // A result resent after its unit was already taken back, or one that arrives twice.
+            // at() would throw here and take the whole server thread down with it.
+            if (!_workAllocationMap.contains(workerId))
+            {
+                dist_logger()->warn("Worker {} sent a result for a unit it no longer holds, ignored", workerId);
+                break;
+            }
+
+            _departedWorkers.erase(workerId);
+
             // Write stats into the worker info repository
             const auto workResults = vector_deserialize<work_container>(binary);
             const auto& allocation = _workAllocationMap.at(workerId);
@@ -122,6 +138,7 @@ void distributed_controller::_handle_Workers_Socket_Msg()
             // just fail every unit it is handed
             _freeWorkersPool.erase(workerId);
             _settings().workerInfo.worker_left(workerId);
+            _departedWorkers.erase(workerId);
 
             if (_workAllocationMap.contains(workerId))
             {
@@ -334,6 +351,38 @@ distributed_controller::distributed_controller(const std::string& controllerAddr
     _islandsSocket.bind("ipc://distributed_controller_islands_socket");
 }
 
+void distributed_controller::_expire_departed_workers()
+{
+    const auto now = std::chrono::steady_clock::now();
+    const std::chrono::milliseconds timeout{_rejoinTimeoutMs.load()};
+
+    for (auto departed = _departedWorkers.begin(); departed != _departedWorkers.end();)
+    {
+        if (now - departed->second < timeout)
+        {
+            ++departed;
+            continue;
+        }
+
+        const std::string workerId = departed->first;
+        departed = _departedWorkers.erase(departed);
+
+        if (_workAllocationMap.contains(workerId))
+        {
+            dist_logger()->info("Worker {} did not rejoin in time, its unit goes to another node", workerId);
+            // Copied, because the erase below invalidates the record
+            const auto record = _workAllocationMap.at(workerId);
+            _workAllocationMap.erase(workerId);
+            _allocate_island_work(record.islandId, record.workData);
+        }
+    }
+}
+
+void distributed_controller::set_rejoin_timeout(const std::chrono::milliseconds timeout)
+{
+    _rejoinTimeoutMs.store(timeout.count());
+}
+
 void distributed_controller::run_server()
 {
     _serverThread = std::thread([this]
@@ -342,7 +391,9 @@ void distributed_controller::run_server()
         {
             for (;;)
             {
-                _poller.wait(std::chrono::milliseconds{-1});
+                // Wakes at least once a second, so that departed workers are checked without a message
+                _poller.wait(std::chrono::milliseconds{1000});
+                _expire_departed_workers();
             }
         }
         catch (...)

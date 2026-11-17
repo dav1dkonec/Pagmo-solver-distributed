@@ -126,6 +126,9 @@ public:
 
     bool wait_until_workers_connect(std::chrono::milliseconds timeout);
 
+    // A worker that drops off mid-unit keeps its unit this long before it goes to another node
+    void set_worker_rejoin_timeout(std::chrono::milliseconds timeout);
+
     size_t get_current_worker_count();
 
     size_t get_expected_worker_count() const;

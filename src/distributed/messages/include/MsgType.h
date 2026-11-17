@@ -56,7 +56,9 @@ enum class MsgType
     BLOB_BINARY,
     WORK_FAILED,
     PUT_DLL,
-    WORKER_INFO
+    WORKER_INFO,
+    // To a worker that rejoined while holding a unit: send the result again if it has one
+    RESEND_RESULTS
 };
 
 // Capabilities the controller cannot measure, sent by the worker right after it connects.
