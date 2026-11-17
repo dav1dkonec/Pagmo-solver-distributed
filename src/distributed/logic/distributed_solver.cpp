@@ -278,6 +278,7 @@ void distributed_solver::evolve(const pagmo::problem& problem, const algorithm_f
 
     // Archipelago using fully connected topology between the islands
     _archipelago = pagmo::archipelago{pagmo::fully_connected{}};
+    _islandWorkers.clear();
 
     // One island per node the plan admits, each sized so that they all finish at about the same time
     const auto workPlan = _generate_work_plan(populationSize, generationCount, algorithmNames, minIslandPopSize);
@@ -294,6 +295,7 @@ void distributed_solver::evolve(const pagmo::problem& problem, const algorithm_f
         // We set the initial population to this island (hints) if there are any
         _set_island_hints(isl);
         _archipelago.push_back(isl);
+        _islandWorkers.push_back(assignment.preferredWorkerId);
     }
 
     // Start evolving
@@ -307,6 +309,31 @@ void distributed_solver::set_initial_hints(const std::vector<pagmo::vector_doubl
     _initialHints = hints;
 }
 
+void distributed_solver::_log_migration() const
+{
+    // pagmo logs a migrant only once it has made it into the receiving population, as
+    // (time, id, x, f, source island, destination island)
+    const auto log = _archipelago.get_migration_log();
+    std::map<std::pair<size_t, size_t>, size_t> byRoute;
+    for (const auto& entry : log)
+    {
+        ++byRoute[{std::get<4>(entry), std::get<5>(entry)}];
+    }
+
+    const auto worker = [this](const size_t island)
+    {
+        return island < _islandWorkers.size() && !_islandWorkers[island].empty() ? _islandWorkers[island]
+                                                                                  : std::string{"any worker"};
+    };
+
+    dist_logger()->info("Migration: {} migrants accepted between {} islands", log.size(), _archipelago.size());
+    for (const auto& [route, count] : byRoute)
+    {
+        dist_logger()->info("Migration: {} from island {} ({}) into island {} ({})", count, route.first,
+                            worker(route.first), route.second, worker(route.second));
+    }
+}
+
 pagmo::vector_double distributed_solver::wait_until_completion()
 {
     if (_archipelago.status() == pagmo::evolve_status::idle ||
@@ -318,6 +345,7 @@ pagmo::vector_double distributed_solver::wait_until_completion()
     _archipelago.wait_check();
 
     dist_logger()->info("Main Archipelago: Evolution finished");
+    _log_migration();
     pagmo::vector_double bestIndividual = get_best_individual();
 
     std::string bestStr = "[";

@@ -58,6 +58,9 @@ class distributed_solver : public logger_control
     pagmo::archipelago _archipelago{};
 
     std::vector<pagmo::vector_double> _initialHints{};
+    // The node each island was planned for, by island index, so the migration log can name them
+    std::vector<std::string> _islandWorkers{};
+    void _log_migration() const;
     void _set_island_hints(pagmo::island& isl) const;
 
     /**
