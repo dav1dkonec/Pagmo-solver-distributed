@@ -63,6 +63,7 @@ inline std::vector<pagmo::pop_size_t> select_best_N_so(const pagmo::problem& pro
  * Creates a single new pagmo::population, based on individuals provided in allPopulations and selectedIndexes
  * @param prob Needs to be provided, pagmo::problem is a part of pagmo::population
  * @param allPopulations Vector of individuals which is bigger than the new population
+ * @param allFitness Fitnesses of allPopulations, taken over instead of evaluating again
  * @param selectedIndexes Indexes of individuals we want to include in the new population
  * @param seed Optional seed for the pagmo::population
  * @return A new population containing only those individuals specified by selectedIndexes
@@ -70,21 +71,17 @@ inline std::vector<pagmo::pop_size_t> select_best_N_so(const pagmo::problem& pro
 inline pagmo::population build_new_population(
     const pagmo::problem& prob,
     const std::vector<pagmo::vector_double>& allPopulations,
+    const std::vector<pagmo::vector_double>& allFitness,
     const std::vector<pagmo::pop_size_t>& selectedIndexes,
     const std::optional<unsigned> seed = std::nullopt)
 {
-    //  Construct the new population object using provided arguments
-    pagmo::population newPop{
-        prob,
-        selectedIndexes.size(),
-        seed.value_or(pagmo::random_device::next())
-    };
+    // Starts empty: a sized population, or set_x, evaluates every individual, serially
+    pagmo::population newPop{prob, 0u, seed.value_or(pagmo::random_device::next())};
 
     // Fill the newPop object with new individuals ("best" POPULATION_SIZE individuals)
-    for (std::size_t i = 0; i < selectedIndexes.size(); ++i)
+    for (const auto idx : selectedIndexes)
     {
-        const auto idx = selectedIndexes[i];
-        newPop.set_x(i, allPopulations[idx]);
+        newPop.push_back(allPopulations[idx], allFitness[idx]);
     }
 
     return newPop;
@@ -120,8 +117,8 @@ inline std::vector<pagmo::pop_size_t> get_best_N_individuals_indexes(const pagmo
  * - Workflow of this function is:
  *  - 1) Determine if the problem is SO or MO
  *  - 2) Find out indexes of best N individuals (SO or MO version)
- *  - 3) Construct a new population object (build_new_population)
- *  - 4) Fill the new population object according to indexes from 2) (build_new_population)
+ *  - 3) Construct an empty population object (build_new_population)
+ *  - 4) Fill it with the individuals from 2) and their known fitness (build_new_population)
  *  - 5) Return the final pagmo::population
  * @param prob Needed to determine if the problem is SO or MO, and to construct pagmo::population
  * @param allPopulations Individuals of all the populations we want to choose from
@@ -138,7 +135,7 @@ inline pagmo::population select_best_N_into_new_population(const pagmo::problem&
 {
     const std::vector<pagmo::pop_size_t> bestIndividualIndexes = get_best_N_individuals_indexes(prob, allFitness, N);
 
-    return build_new_population(prob, allPopulations, bestIndividualIndexes, seed);
+    return build_new_population(prob, allPopulations, allFitness, bestIndividualIndexes, seed);
 }
 
 
