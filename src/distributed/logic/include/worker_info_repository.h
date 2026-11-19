@@ -31,10 +31,14 @@ struct work_stats
     // recent units dominate. Multiply by the island count for the rate of the whole node.
     double islandWorkRate = 0;
     uint64_t samples = 0;
+    // Samples from units that ran on all the node's cores. An island runs faster when fewer of
+    // them share the node, so only these give a rate that scales with the core count.
+    uint64_t fullNodeSamples = 0;
 
-    // Folds one finished unit into the cumulative totals and into the work rate average
+    // Folds one finished unit into the cumulative totals and into the work rate average.
+    // A unit on fewer islands than cores moves the rate only while the node has no full one.
     void add_sample(uint64_t workTimeMs, uint64_t evolveTimeMs, uint64_t population, uint64_t islandCount,
-                    uint64_t generationCount);
+                    uint64_t generationCount, bool fullNode);
 
 private:
     //####################################
@@ -46,10 +50,10 @@ private:
     template <typename Archive>
     void serialize(Archive& ar, const unsigned version)
     {
-        if (version < 3)
+        if (version < 4)
         {
-            // Earlier versions counted individuals without the generations, which is not a work
-            // rate and cannot be converted into one.
+            // Earlier rates mixed in units on fewer islands than cores, which overstate a node,
+            // and version 2 counted individuals without generations. Neither can be corrected.
             throw boost::archive::archive_exception(boost::archive::archive_exception::unsupported_class_version);
         }
 
@@ -58,10 +62,11 @@ private:
         ar & BOOST_SERIALIZATION_NVP(processedPopulation);
         ar & BOOST_SERIALIZATION_NVP(islandWorkRate);
         ar & BOOST_SERIALIZATION_NVP(samples);
+        ar & BOOST_SERIALIZATION_NVP(fullNodeSamples);
     }
 };
 
-BOOST_CLASS_VERSION(work_stats, 3)
+BOOST_CLASS_VERSION(work_stats, 4)
 
 struct worker_info
 {

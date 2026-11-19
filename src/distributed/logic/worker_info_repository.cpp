@@ -11,7 +11,7 @@ namespace
 }
 
 void work_stats::add_sample(const uint64_t workTimeMs, const uint64_t evolveTimeMs, const uint64_t population,
-                            const uint64_t islandCount, const uint64_t generationCount)
+                            const uint64_t islandCount, const uint64_t generationCount, const bool fullNode)
 {
     workTime += workTimeMs;
     evolveTime += evolveTimeMs;
@@ -22,10 +22,21 @@ void work_stats::add_sample(const uint64_t workTimeMs, const uint64_t evolveTime
     const double sample = safe_divide(population, evolveTimeMs * std::max<uint64_t>(1, islandCount))
         * static_cast<double>(std::max<uint64_t>(1, generationCount));
 
-    // The first sample has nothing to age against, so it seeds the average.
-    islandWorkRate = samples == 0
-                         ? sample
-                         : Throughput_Smoothing * sample + (1 - Throughput_Smoothing) * islandWorkRate;
+    // A sample with no earlier one of its kind seeds the average instead of aging it
+    const auto aged = [&](const uint64_t earlier)
+    {
+        return earlier == 0 ? sample : Throughput_Smoothing * sample + (1 - Throughput_Smoothing) * islandWorkRate;
+    };
+
+    if (fullNode)
+    {
+        islandWorkRate = aged(fullNodeSamples);
+        ++fullNodeSamples;
+    }
+    else if (fullNodeSamples == 0)
+    {
+        islandWorkRate = aged(samples);
+    }
     ++samples;
 }
 
@@ -107,14 +118,18 @@ void worker_info_repository::worker_finished_work(const std::string& workerID, c
     const auto endTime = std::chrono::high_resolution_clock::now();
     const auto workTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime - startTime).count();
 
-    wInfo.totalStats.add_sample(workTime, evolveTimeMs, processedPopulation, islandCount, generationCount);
+    // An unknown core count leaves nothing to compare with, so the unit counts as the whole node
+    const bool fullNode = wInfo.coreCount == 0 || islandCount >= wInfo.coreCount;
+
+    wInfo.totalStats.add_sample(workTime, evolveTimeMs, processedPopulation, islandCount, generationCount, fullNode);
     wInfo.statsByAlgorithm[algoName].add_sample(workTime, evolveTimeMs, processedPopulation, islandCount,
-                                                generationCount);
+                                                generationCount, fullNode);
 
     dist_logger()->debug("{} round-trip {} ms, of which {} ms computing {} individuals over {} generations on {} "
-                         "islands, work rate {:.5f} ind*gen/ms per island",
+                         "islands, work rate {:.5f} ind*gen/ms per island{}",
                          workerID, workTime, evolveTimeMs, processedPopulation, generationCount, islandCount,
-                         wInfo.totalStats.islandWorkRate);
+                         wInfo.totalStats.islandWorkRate,
+                         fullNode ? "" : fmt::format(" (kept: {} of {} cores used)", islandCount, wInfo.coreCount));
 }
 
 void worker_info_repository::clear()

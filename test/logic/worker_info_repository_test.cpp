@@ -146,6 +146,30 @@ TEST_CASE("Worker Info Repository - work rate", "[worker-info]") {
         REQUIRE(repo.get_worker_info("worker1")->totalStats.islandWorkRate == 2.0);
     }
 
+    SECTION("a unit on fewer islands than cores does not move a full-node rate") {
+        repo.worker_reported_cores("worker1", 4);
+        repo.worker_started_work("worker1");
+        repo.worker_finished_work("worker1", 800, "DE", 100, 4, 1);
+
+        // One island alone runs faster than each of four together, so it would overstate the node
+        repo.worker_started_work("worker1");
+        repo.worker_finished_work("worker1", 800, "DE", 100, 1, 1);
+
+        REQUIRE(repo.get_worker_info("worker1")->totalStats.islandWorkRate == 2.0);
+        REQUIRE(repo.get_worker_info("worker1")->statsByAlgorithm["DE"].islandWorkRate == 2.0);
+    }
+
+    SECTION("partial units stand in until the first full one replaces them") {
+        repo.worker_reported_cores("worker1", 4);
+        repo.worker_started_work("worker1");
+        repo.worker_finished_work("worker1", 800, "DE", 100, 1, 1);
+        REQUIRE(repo.get_worker_info("worker1")->totalStats.islandWorkRate == 8.0);
+
+        repo.worker_started_work("worker1");
+        repo.worker_finished_work("worker1", 800, "DE", 100, 4, 1);
+        REQUIRE(repo.get_worker_info("worker1")->totalStats.islandWorkRate == 2.0);
+    }
+
     SECTION("a plain join leaves the work rate record alone") {
         repo.worker_started_work("worker1");
         repo.worker_finished_work("worker1", 400, "DE", 100, 2, 1);
