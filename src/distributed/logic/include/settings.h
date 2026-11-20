@@ -80,8 +80,17 @@ private:
                 // The file only caches what the nodes have shown, so a run that cannot read it
                 // clears it and measures again. initialize() does the clearing, because a
                 // half-read archive leaves records behind.
-                std::cerr << "Discarding " << _settingsPath.string() << " and measuring again: "
-                    << e.what() << std::endl;
+                // An older version is expected after an upgrade; anything else is a damaged file.
+                if (e.code == boost::archive::archive_exception::unsupported_class_version)
+                {
+                    std::cerr << "Discarding " << _settingsPath.string()
+                        << ": saved by an older version, measuring again" << std::endl;
+                }
+                else
+                {
+                    std::cerr << "Discarding " << _settingsPath.string() << " and measuring again: "
+                        << e.what() << std::endl;
+                }
             }
         }
 
