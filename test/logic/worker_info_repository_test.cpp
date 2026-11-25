@@ -105,12 +105,12 @@ TEST_CASE("Worker Info Repository - work rate", "[worker-info]") {
     worker_info_repository repo;
     repo.worker_joined("worker1");
 
-    SECTION("the rate is measured per island, not per node") {
+    SECTION("the rate is measured for the whole node") {
         repo.worker_started_work("worker1");
         repo.worker_finished_work("worker1", 800, "DE", 100, 4, 1);
 
-        // 800 individuals in 100 ms on 4 islands is 2 individuals per ms on each of them
-        REQUIRE(repo.get_worker_info("worker1")->totalStats.islandWorkRate == 2.0);
+        // 800 individuals in 100 ms is 8 individuals per ms, however many islands carried them
+        REQUIRE(repo.get_worker_info("worker1")->totalStats.nodeWorkRate == 8.0);
     }
 
     SECTION("a later sample ages the average instead of replacing it") {
@@ -119,7 +119,7 @@ TEST_CASE("Worker Info Repository - work rate", "[worker-info]") {
         repo.worker_started_work("worker1");
         repo.worker_finished_work("worker1", 300, "DE", 100, 1, 1);
 
-        const auto throughput = repo.get_worker_info("worker1")->totalStats.islandWorkRate;
+        const auto throughput = repo.get_worker_info("worker1")->totalStats.nodeWorkRate;
         REQUIRE(throughput > 1.0);
         REQUIRE(throughput < 3.0);
     }
@@ -136,38 +136,14 @@ TEST_CASE("Worker Info Repository - work rate", "[worker-info]") {
         repo.worker_finished_work("worker1", 800, "DE", 100, 4, 50);
 
         // The same unit at 50 generations is 50 times the computing
-        REQUIRE(repo.get_worker_info("worker1")->totalStats.islandWorkRate == 100.0);
+        REQUIRE(repo.get_worker_info("worker1")->totalStats.nodeWorkRate == 400.0);
     }
 
     SECTION("an unstated generation count leaves the rate at individuals per millisecond") {
         repo.worker_started_work("worker1");
         repo.worker_finished_work("worker1", 800, "DE", 100, 4, 0);
 
-        REQUIRE(repo.get_worker_info("worker1")->totalStats.islandWorkRate == 2.0);
-    }
-
-    SECTION("a unit on fewer islands than cores does not move a full-node rate") {
-        repo.worker_reported_cores("worker1", 4);
-        repo.worker_started_work("worker1");
-        repo.worker_finished_work("worker1", 800, "DE", 100, 4, 1);
-
-        // One island alone runs faster than each of four together, so it would overstate the node
-        repo.worker_started_work("worker1");
-        repo.worker_finished_work("worker1", 800, "DE", 100, 1, 1);
-
-        REQUIRE(repo.get_worker_info("worker1")->totalStats.islandWorkRate == 2.0);
-        REQUIRE(repo.get_worker_info("worker1")->statsByAlgorithm["DE"].islandWorkRate == 2.0);
-    }
-
-    SECTION("partial units stand in until the first full one replaces them") {
-        repo.worker_reported_cores("worker1", 4);
-        repo.worker_started_work("worker1");
-        repo.worker_finished_work("worker1", 800, "DE", 100, 1, 1);
-        REQUIRE(repo.get_worker_info("worker1")->totalStats.islandWorkRate == 8.0);
-
-        repo.worker_started_work("worker1");
-        repo.worker_finished_work("worker1", 800, "DE", 100, 4, 1);
-        REQUIRE(repo.get_worker_info("worker1")->totalStats.islandWorkRate == 2.0);
+        REQUIRE(repo.get_worker_info("worker1")->totalStats.nodeWorkRate == 8.0);
     }
 
     SECTION("a plain join leaves the work rate record alone") {
@@ -175,7 +151,7 @@ TEST_CASE("Worker Info Repository - work rate", "[worker-info]") {
         repo.worker_finished_work("worker1", 400, "DE", 100, 2, 1);
 
         repo.worker_joined("worker1");
-        REQUIRE(repo.get_worker_info("worker1")->totalStats.islandWorkRate == 2.0);
+        REQUIRE(repo.get_worker_info("worker1")->totalStats.nodeWorkRate == 4.0);
     }
 }
 

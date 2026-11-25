@@ -102,10 +102,10 @@ TEST_CASE("Settings - controller measurements", "[settings]") {
             std::ifstream in{file};
             content.assign(std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{});
         }
-        const std::string current = "version=\"4\"";
+        const std::string current = "version=\"5\"";
         const auto at = content.find(current);
         REQUIRE(at != std::string::npos);
-        content.replace(at, current.size(), "version=\"3\"");
+        content.replace(at, current.size(), "version=\"4\"");
         {
             std::ofstream out{file, std::ios::trunc};
             out << content;

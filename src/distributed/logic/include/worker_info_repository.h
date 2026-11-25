@@ -27,18 +27,13 @@ struct work_stats
     // Individuals the worker really evolved, as reported by the worker
     uint64_t processedPopulation = 0;
 
-    // Individuals times generations per millisecond of computation on one island, aged so that
-    // recent units dominate. Multiply by the island count for the rate of the whole node.
-    double islandWorkRate = 0;
+    // Individuals times generations per millisecond of computation on the whole node, aged so
+    // that recent units dominate
+    double nodeWorkRate = 0;
     uint64_t samples = 0;
-    // Samples from units that ran on all the node's cores. An island runs faster when fewer of
-    // them share the node, so only these give a rate that scales with the core count.
-    uint64_t fullNodeSamples = 0;
 
-    // Folds one finished unit into the cumulative totals and into the work rate average.
-    // A unit on fewer islands than cores moves the rate only while the node has no full one.
-    void add_sample(uint64_t workTimeMs, uint64_t evolveTimeMs, uint64_t population, uint64_t islandCount,
-                    uint64_t generationCount, bool fullNode);
+    // Folds one finished unit into the cumulative totals and into the work rate average
+    void add_sample(uint64_t workTimeMs, uint64_t evolveTimeMs, uint64_t population, uint64_t generationCount);
 
 private:
     //####################################
@@ -50,23 +45,22 @@ private:
     template <typename Archive>
     void serialize(Archive& ar, const unsigned version)
     {
-        if (version < 4)
+        if (version < 5)
         {
-            // Earlier rates mixed in units on fewer islands than cores, which overstate a node,
-            // and version 2 counted individuals without generations. Neither can be corrected.
+            // Earlier versions kept the rate of one island, which a node running one population
+            // does not have. Neither that nor older rates can be converted.
             throw boost::archive::archive_exception(boost::archive::archive_exception::unsupported_class_version);
         }
 
         ar & BOOST_SERIALIZATION_NVP(workTime);
         ar & BOOST_SERIALIZATION_NVP(evolveTime);
         ar & BOOST_SERIALIZATION_NVP(processedPopulation);
-        ar & BOOST_SERIALIZATION_NVP(islandWorkRate);
+        ar & BOOST_SERIALIZATION_NVP(nodeWorkRate);
         ar & BOOST_SERIALIZATION_NVP(samples);
-        ar & BOOST_SERIALIZATION_NVP(fullNodeSamples);
     }
 };
 
-BOOST_CLASS_VERSION(work_stats, 4)
+BOOST_CLASS_VERSION(work_stats, 5)
 
 struct worker_info
 {

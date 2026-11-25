@@ -9,71 +9,48 @@ namespace
     // One generation, so that the work rates below read as individuals per millisecond
     constexpr size_t GEN = 1;
 
-    node_capability measured(const std::string& id, const size_t cores, const double perIsland)
+    node_capability measured(const std::string& id, const size_t cores, const double nodeRate)
     {
-        return {id, cores, perIsland, true};
+        return {id, cores, nodeRate, true};
     }
 
+    // Credited per core, as the solver does for a node that has not finished a unit yet
     node_capability unmeasured(const std::string& id, const size_t cores)
     {
-        return {id, cores, 1.0, false};
+        return {id, cores, static_cast<double>(cores), false};
     }
 
     // A wide node and a narrow one that is also slower per core, which is the case the planner
     // has to get right. Both figures come from a run of the real problem, per generation.
-    const node_capability fast = measured("fast", 8, 0.00085);
-    const node_capability slow = measured("slow", 4, 0.00038);
+    const node_capability fast = measured("fast", 8, 8 * 0.00085);
+    const node_capability slow = measured("slow", 4, 4 * 0.00038);
 }
 
 TEST_CASE("Work plan - predicted time", "[work-plan]") {
-    SECTION("more individuals can mean less time, because they open another island") {
-        // One short of the second island they all queue behind one core; one more and two run
-        REQUIRE(predicted_time(fast, 2 * MIN_ISLAND - 1, GEN, MIN_ISLAND)
-                > predicted_time(fast, 2 * MIN_ISLAND, GEN, MIN_ISLAND));
-    }
-
-    SECTION("no more islands than cores") {
-        // Both shares run on eight islands, so the larger one takes proportionally longer
-        const double eight = predicted_time(fast, 8 * MIN_ISLAND, GEN, MIN_ISLAND);
-        REQUIRE(predicted_time(fast, 16 * MIN_ISLAND, GEN, MIN_ISLAND) == 2 * eight);
+    SECTION("twice the individuals is twice the time") {
+        REQUIRE(predicted_time(fast, 16 * MIN_ISLAND, GEN) == 2 * predicted_time(fast, 8 * MIN_ISLAND, GEN));
     }
 
     SECTION("twice the generations is twice the time") {
-        REQUIRE(predicted_time(fast, 8 * MIN_ISLAND, 2 * GEN, MIN_ISLAND)
-                == 2 * predicted_time(fast, 8 * MIN_ISLAND, GEN, MIN_ISLAND));
+        REQUIRE(predicted_time(fast, 8 * MIN_ISLAND, 2 * GEN) == 2 * predicted_time(fast, 8 * MIN_ISLAND, GEN));
     }
 
     SECTION("a node with no measurement yet reports no time") {
         const node_capability idle{"idle", 4, 0, false};
-        REQUIRE(predicted_time(idle, 320, GEN, MIN_ISLAND) == 0);
+        REQUIRE(predicted_time(idle, 320, GEN) == 0);
     }
 }
 
 TEST_CASE("Work plan - capacity within a deadline", "[work-plan]") {
     SECTION("a deadline too short for one island is worth nothing") {
-        const double tooShort = predicted_time(slow, MIN_ISLAND, GEN, MIN_ISLAND) - 1;
+        const double tooShort = predicted_time(slow, MIN_ISLAND, GEN) - 1;
         REQUIRE(capacity_within(slow, tooShort, GEN, MIN_ISLAND) == 0);
     }
 
-    SECTION("right below a step the node is worth nothing at all") {
-        // The deadline reaches 300 individuals across four islands, but four of them need 320,
-        // and three, two or one of them cannot carry even their own minimum by then either
-        const double deadline = 300.0 / (4 * 0.00038);
-        REQUIRE(capacity_within(slow, deadline, GEN, MIN_ISLAND) == 0);
-    }
-
-    SECTION("opening another island needs individuals to fill it") {
-        // Right below the step, the extra core cannot be used and the capacity stays behind it
-        const double justUnder = (4 * MIN_ISLAND - 1) / (4 * 0.00038);
-        REQUIRE(capacity_within(slow, justUnder, GEN, MIN_ISLAND) < 4 * MIN_ISLAND);
-
-        const double justOver = (4 * MIN_ISLAND) / (4 * 0.00038);
-        REQUIRE(capacity_within(slow, justOver, GEN, MIN_ISLAND) >= 4 * MIN_ISLAND);
-    }
-
-    SECTION("capacity is not capped once every core carries an island") {
-        const double deadline = 10 * MIN_ISLAND / (4 * 0.00038);
-        REQUIRE(capacity_within(slow, deadline, GEN, MIN_ISLAND) > 4 * MIN_ISLAND);
+    SECTION("capacity follows the deadline once it reaches one island") {
+        const double deadline = predicted_time(slow, 10 * MIN_ISLAND, GEN);
+        REQUIRE(capacity_within(slow, deadline, GEN, MIN_ISLAND) == Catch::Approx(10 * MIN_ISLAND).margin(1));
+        REQUIRE(capacity_within(slow, 2 * deadline, GEN, MIN_ISLAND) == Catch::Approx(20 * MIN_ISLAND).margin(1));
     }
 }
 
@@ -81,12 +58,12 @@ TEST_CASE("Work plan - generations that fit a deadline", "[work-plan]") {
     SECTION("it is the inverse of the predicted time") {
         // Equal nodes must get equal depth, so a share that exactly fits may not lose a
         // generation to rounding; 8 cores at 0.00121 with 160 individuals is a measured case
-        const node_capability mac = measured("mac", 8, 0.00121);
+        const node_capability mac = measured("mac", 8, 8 * 0.00121);
         for (const auto& node : {fast, slow, mac}) {
             for (const size_t share : {2 * MIN_ISLAND, 4 * MIN_ISLAND, 8 * MIN_ISLAND}) {
                 for (const size_t generations : {1, 2, 3, 50, 96}) {
-                    const double deadline = predicted_time(node, share, generations, MIN_ISLAND);
-                    REQUIRE(generations_within(node, share, deadline, MIN_ISLAND) == generations);
+                    const double deadline = predicted_time(node, share, generations);
+                    REQUIRE(generations_within(node, share, deadline) == generations);
                 }
             }
         }
@@ -94,20 +71,20 @@ TEST_CASE("Work plan - generations that fit a deadline", "[work-plan]") {
 
     SECTION("twice the deadline is twice the depth") {
         const size_t share = 4 * MIN_ISLAND;
-        const double deadline = predicted_time(slow, share, 50, MIN_ISLAND);
+        const double deadline = predicted_time(slow, share, 50);
 
-        const auto once = generations_within(slow, share, deadline, MIN_ISLAND);
-        const auto twice = generations_within(slow, share, 2 * deadline, MIN_ISLAND);
+        const auto once = generations_within(slow, share, deadline);
+        const auto twice = generations_within(slow, share, 2 * deadline);
         REQUIRE(static_cast<double>(twice) == Catch::Approx(2.0 * static_cast<double>(once)).epsilon(0.05));
     }
 
     SECTION("a deadline too short for one generation is worth nothing") {
-        const double tooShort = predicted_time(slow, MIN_ISLAND, GEN, MIN_ISLAND) / 2;
-        REQUIRE(generations_within(slow, MIN_ISLAND, tooShort, MIN_ISLAND) == 0);
+        const double tooShort = predicted_time(slow, MIN_ISLAND, GEN) / 2;
+        REQUIRE(generations_within(slow, MIN_ISLAND, tooShort) == 0);
     }
 
     SECTION("a node with no share runs nothing") {
-        REQUIRE(generations_within(fast, 0, 1000.0, MIN_ISLAND) == 0);
+        REQUIRE(generations_within(fast, 0, 1000.0) == 0);
     }
 }
 
@@ -126,7 +103,7 @@ TEST_CASE("Work plan - equal shares", "[work-plan]") {
 
     SECTION("the slowest nodes drop out when the population cannot fill an island each") {
         // 160 individuals reach two islands of 80, so the last two of the four get nothing
-        std::vector<node_capability> cluster(4, measured("node", 4, 0.0004));
+        std::vector<node_capability> cluster(4, measured("node", 4, 4 * 0.0004));
         const auto shares = equal_shares(cluster, 2 * MIN_ISLAND, MIN_ISLAND);
 
         REQUIRE(shares.at(0) == MIN_ISLAND);
@@ -166,9 +143,9 @@ TEST_CASE("Work plan - balanced shares", "[work-plan]") {
     }
 
     SECTION("a node that cannot shorten the cycle is left with nothing") {
-        // The slow node needs 210 s for the one island it cannot go below, while the fast node
-        // runs the whole population in 141 s
-        const auto shares = balanced_shares({fast, slow}, 960, GEN, MIN_ISLAND);
+        // The crawling node needs 8000 s for the one island it cannot go below, while the fast
+        // node runs the whole population in 141 s
+        const auto shares = balanced_shares({fast, measured("crawl", 4, 0.00001)}, 960, GEN, MIN_ISLAND);
 
         REQUIRE(shares.at(0) == 960);
         REQUIRE(shares.at(1) == 0);
@@ -178,18 +155,11 @@ TEST_CASE("Work plan - balanced shares", "[work-plan]") {
         const auto shares = balanced_shares({fast, slow}, 1920, GEN, MIN_ISLAND);
 
         REQUIRE(shares.at(1) >= 4 * MIN_ISLAND);
-        REQUIRE(predicted_time(fast, shares.at(0), GEN, MIN_ISLAND)
-                == Catch::Approx(predicted_time(slow, shares.at(1), GEN, MIN_ISLAND)).epsilon(0.05));
+        REQUIRE(predicted_time(fast, shares.at(0), GEN)
+                == Catch::Approx(predicted_time(slow, shares.at(1), GEN)).epsilon(0.05));
     }
 
-    SECTION("a share reaches the step instead of stopping below it") {
-        // Dividing 1920 in proportion to power gave the slow node 318, which fills three of its
-        // four islands and leaves a core idle; it has to reach 320 for the fourth one to open
-        const auto shares = balanced_shares({fast, slow}, 1920, GEN, MIN_ISLAND);
-        REQUIRE(shares.at(1) / MIN_ISLAND == 4);
-    }
-
-    SECTION("an unmeasured node is risked with one island per core and no more") {
+    SECTION("an unmeasured node is risked with a minimum island per core and no more") {
         const auto shares = balanced_shares({unmeasured("fast", 8), unmeasured("slow", 4)}, 1920, GEN, MIN_ISLAND);
 
         REQUIRE(shares.at(1) == 4 * MIN_ISLAND);
@@ -215,7 +185,7 @@ TEST_CASE("Work plan - balanced shares", "[work-plan]") {
     }
 
     SECTION("nodes of equal capability are given equal shares") {
-        std::vector<node_capability> cluster(4, measured("node", 4, 0.0004));
+        std::vector<node_capability> cluster(4, measured("node", 4, 4 * 0.0004));
         const auto shares = balanced_shares(cluster, 1920, GEN, MIN_ISLAND);
 
         for (const auto share : shares) {

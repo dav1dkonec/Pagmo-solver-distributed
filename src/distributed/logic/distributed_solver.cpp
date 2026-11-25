@@ -36,7 +36,7 @@ namespace
         const auto connectedWorkers = repo.get_connected_workers();
 
         // A node that has not run anything yet is credited with what the measured ones average per
-        // island, so its cores still count. With nothing measured at all the figure cancels out of
+        // core, so its cores still count. With nothing measured at all the figure cancels out of
         // the ratios and the split is decided by core count alone.
         double measuredSum = 0;
         size_t measuredCount = 0;
@@ -45,11 +45,11 @@ namespace
             const auto info = repo.get_worker_info(workerId);
             if (info && info->totalStats.samples > 0)
             {
-                measuredSum += info->totalStats.islandWorkRate;
+                measuredSum += info->totalStats.nodeWorkRate / static_cast<double>(std::max<size_t>(1, info->coreCount));
                 ++measuredCount;
             }
         }
-        const double assumedWorkRate = measuredCount > 0 ? measuredSum / static_cast<double>(measuredCount) : 1.0;
+        const double assumedCoreRate = measuredCount > 0 ? measuredSum / static_cast<double>(measuredCount) : 1.0;
 
         std::vector<node_capability> nodes;
         nodes.reserve(connectedWorkers.size());
@@ -63,15 +63,12 @@ namespace
 
             const size_t cores = std::max<size_t>(1, info->coreCount);
             const bool measured = info->totalStats.samples > 0;
-            const double perIsland = measured ? info->totalStats.islandWorkRate : assumedWorkRate;
+            const double rate = measured ? info->totalStats.nodeWorkRate : assumedCoreRate * static_cast<double>(cores);
 
-            nodes.push_back({workerId, cores, perIsland, measured});
+            nodes.push_back({workerId, cores, rate, measured});
         }
 
-        std::ranges::sort(nodes, std::greater{}, [](const node_capability& node)
-        {
-            return work_rate_with_all_cores(node);
-        });
+        std::ranges::sort(nodes, std::greater{}, &node_capability::nodeWorkRate);
 
         // Islands take their algorithm in order, so the fastest node runs the first one. Where a node
         // has already been measured on the algorithm it is about to run, that figure is the better one.
@@ -82,7 +79,7 @@ namespace
 
             if (byAlgo != info->statsByAlgorithm.end() && byAlgo->second.samples > 0)
             {
-                nodes.at(i).islandWorkRate = byAlgo->second.islandWorkRate;
+                nodes.at(i).nodeWorkRate = byAlgo->second.nodeWorkRate;
                 nodes.at(i).measured = true;
             }
         }
@@ -168,7 +165,7 @@ std::vector<island_assignment> distributed_solver::_generate_work_plan(
     // The leader sets the pace by carrying its own share at the full generation count, and the
     // others go as deep as that leaves them
     const size_t leaderPop = ceil_to_multiple(shares.front(), 4);
-    const double deadlineMs = predicted_time(nodes.front(), leaderPop, unitGenerations, minIslandPopSize);
+    const double deadlineMs = predicted_time(nodes.front(), leaderPop, unitGenerations);
 
     for (size_t i = 0; i < nodes.size(); ++i)
     {
@@ -176,8 +173,8 @@ std::vector<island_assignment> distributed_solver::_generate_work_plan(
 
         if (shares.at(i) < minIslandPopSize)
         {
-            dist_logger()->info("Leaving {} out of this cycle: {} cores at {:.5f} ind*gen/ms per island cannot "
-                                "shorten it", node.workerId, node.coreCount, node.islandWorkRate);
+            dist_logger()->info("Leaving {} out of this cycle: {} cores at {:.5f} ind*gen/ms per node cannot "
+                                "shorten it", node.workerId, node.coreCount, node.nodeWorkRate);
             continue;
         }
 
@@ -189,8 +186,8 @@ std::vector<island_assignment> distributed_solver::_generate_work_plan(
         const size_t islandGenerations = i == 0 || !fitDepth.at(i)
                                              ? generationCount
                                              : std::min(generationCount,
-                                                        generations_within(node, islandPop, deadlineMs,
-                                                                           minIslandPopSize) / _islandCycleCount);
+                                                        generations_within(node, islandPop, deadlineMs)
+                                                            / _islandCycleCount);
         if (islandGenerations == 0)
         {
             dist_logger()->info("Leaving {} out of this cycle: it cannot finish a single generation of {} "
@@ -199,10 +196,9 @@ std::vector<island_assignment> distributed_solver::_generate_work_plan(
         }
 
         dist_logger()->debug("{} has been assigned {} individuals over {} generations x {} cycles: {} cores at "
-                             "{:.5f} ind*gen/ms per island, predicted {:.0f} s", node.workerId, islandPop,
-                             islandGenerations, _islandCycleCount, node.coreCount, node.islandWorkRate,
-                             predicted_time(node, islandPop, islandGenerations * _islandCycleCount,
-                                            minIslandPopSize) / 1000);
+                             "{:.5f} ind*gen/ms per node, predicted {:.0f} s", node.workerId, islandPop,
+                             islandGenerations, _islandCycleCount, node.coreCount, node.nodeWorkRate,
+                             predicted_time(node, islandPop, islandGenerations * _islandCycleCount) / 1000);
 
         output.push_back({
             .populationSize = islandPop, .cycleCount = _islandCycleCount, .generationCount = islandGenerations,

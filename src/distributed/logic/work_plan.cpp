@@ -5,7 +5,7 @@
 
 namespace
 {
-    // A node that has not shown what it can do is risked with no more than one island per core:
+    // A node that has not shown what it can do is risked with no more than a minimum island per core:
     // enough to measure it on real work, and not so much that a wrong guess decides the cycle.
     size_t share_ceiling(const node_capability& node, const size_t minIslandPopSize)
     {
@@ -13,63 +13,32 @@ namespace
     }
 }
 
-double work_rate_with_all_cores(const node_capability& node)
+double predicted_time(const node_capability& node, const size_t share, const size_t generationCount)
 {
-    return node.islandWorkRate * static_cast<double>(std::max<size_t>(1, node.coreCount));
-}
-
-double predicted_time(const node_capability& node, const size_t share, const size_t generationCount,
-                      const size_t minIslandPopSize)
-{
-    const size_t islands = std::clamp<size_t>(share / minIslandPopSize, 1, std::max<size_t>(1, node.coreCount));
-    const double nodeRate = node.islandWorkRate * static_cast<double>(islands);
     const double work = static_cast<double>(share) * static_cast<double>(std::max<size_t>(1, generationCount));
 
-    return nodeRate > 0 ? work / nodeRate : 0;
+    return node.nodeWorkRate > 0 ? work / node.nodeWorkRate : 0;
 }
 
 size_t capacity_within(const node_capability& node, const double deadlineMs, const size_t generationCount,
                        const size_t minIslandPopSize)
 {
     // The rate counts generations, the capacity counts individuals, so the generations divide out
-    const double generations = static_cast<double>(std::max<size_t>(1, generationCount));
+    const auto reachable = static_cast<size_t>(
+        deadlineMs * node.nodeWorkRate / static_cast<double>(std::max<size_t>(1, generationCount)));
 
-    size_t capacity = 0;
-    for (size_t islands = 1; islands <= node.coreCount; ++islands)
-    {
-        const auto reachable = static_cast<size_t>(
-            deadlineMs * node.islandWorkRate * static_cast<double>(islands) / generations);
-
-        // Any fewer and one of the islands would be under the minimum size
-        if (reachable < islands * minIslandPopSize)
-        {
-            continue;
-        }
-
-        // Any more and the node opens another island, which the next step of the loop covers
-        const size_t stepLimit = islands < node.coreCount
-                                     ? (islands + 1) * minIslandPopSize - 1
-                                     : std::numeric_limits<size_t>::max();
-
-        capacity = std::max(capacity, std::min(reachable, stepLimit));
-    }
-
-    return capacity;
+    return reachable < minIslandPopSize ? 0 : reachable;
 }
 
-size_t generations_within(const node_capability& node, const size_t share, const double deadlineMs,
-                          const size_t minIslandPopSize)
+size_t generations_within(const node_capability& node, const size_t share, const double deadlineMs)
 {
     if (share == 0)
     {
         return 0;
     }
 
-    const size_t islands = std::clamp<size_t>(share / minIslandPopSize, 1, std::max<size_t>(1, node.coreCount));
-    const double work = deadlineMs * node.islandWorkRate * static_cast<double>(islands);
-
     // A share that fits exactly must not lose a generation to rounding in the division
-    return static_cast<size_t>(work / static_cast<double>(share) * (1.0 + 1e-9));
+    return static_cast<size_t>(deadlineMs * node.nodeWorkRate / static_cast<double>(share) * (1.0 + 1e-9));
 }
 
 std::vector<size_t> equal_shares(const std::vector<node_capability>& nodes, const size_t populationSize,
@@ -104,7 +73,7 @@ std::vector<size_t> balanced_shares(const std::vector<node_capability>& nodes, c
     }
 
     // The leader can always take the whole population alone, so its time for that is the ceiling
-    double feasible = predicted_time(nodes.front(), populationSize, generationCount, minIslandPopSize) + 1;
+    double feasible = predicted_time(nodes.front(), populationSize, generationCount) + 1;
     double tooShort = 0;
 
     const auto fits = [&](const double deadline)
