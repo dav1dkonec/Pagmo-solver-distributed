@@ -209,7 +209,7 @@ void print_help(char** argv)
         "\n"
         "Worker options:\n"
         "  --address      <addr>  (default: tcp://localhost:5555)\n"
-        "  --mode         <name>  (default: ARCHIPELAGO_BASED)\n"
+        "  --mode         <name>  (default: SINGLE_THREADED)\n"
         "  --min-pop-size <n>     (default: 80)\n"
         "  --cache-dir    <dir>   (default: worker_cache)\n"
         "  --worker-dir   <name>  Per-worker isolated subdirectory name (default: auto-generated UUID)\n"
@@ -227,7 +227,7 @@ struct main_args
     size_t workers = 2;
 
     std::string strategy = "BY_PERFORMANCE";
-    std::string workerMode = "ARCHIPELAGO_BASED";
+    std::string workerMode = "SINGLE_THREADED";
     size_t minPopSize = 80;
 
     std::string cacheDir = ""; // Set by user

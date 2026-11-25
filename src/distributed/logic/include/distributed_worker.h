@@ -92,7 +92,7 @@ public:
     /**
      * Constructs a distributed worker, which will connect and accept work from a specified controller
      * @param controllerAddress Controller's address
-     * @param workerMode Can be either SINGLE_THREADED or ARCHIPELAGO_BASED (default)
+     * @param workerMode Can be either SINGLE_THREADED (default) or ARCHIPELAGO_BASED
      * @param heartbeatInterval Interval between which the socket sends ping messages
      * @param heartbeatTimeout Peer is considered dead if no ping is received after this interval
      * @param reconnectIvlMax Maximal SYN packet interval (exponentially increases to this value)
@@ -100,7 +100,7 @@ public:
      * @param minIslandPopSize Minimal population size of an island when using archipelago based worker
      */
     explicit distributed_worker(const std::string& controllerAddress,
-                                worker_mode workerMode = worker_mode::ARCHIPELAGO_BASED,
+                                worker_mode workerMode = worker_mode::SINGLE_THREADED,
                                 size_t minIslandPopSize = 80,
                                 int heartbeatInterval = 2000, // 2 seconds
                                 int heartbeatTimeout = 300000, // 5 minutes

@@ -10,6 +10,8 @@
 #include "population_tools.h"
 #include "vector_deserialize.h"
 #include "pagmo/archipelago.hpp"
+#include "pagmo/algorithms/gaco.hpp"
+#include "pagmo/bfe.hpp"
 #include "pagmo/islands/thread_island.hpp"
 #include "pagmo/topologies/fully_connected.hpp"
 #include "pagmo/utils/multi_objective.hpp"
@@ -135,8 +137,15 @@ void distributed_worker::_single_threaded_worker(const pagmo::algorithm& algo, c
     dist_logger()->debug("Running algorithm: {}", algo.get_name());
     dist_logger()->debug("Population size: {}", pop.size());
 
+    // One population leaves the other cores to the batch evaluation, where the algorithm has one
+    pagmo::algorithm parallel = algo;
+    if (auto* gaco = parallel.extract<pagmo::gaco>())
+    {
+        gaco->set_bfe(pagmo::bfe{});
+    }
+
     const auto evolveStart = std::chrono::steady_clock::now();
-    const pagmo::population new_pop = algo.evolve(pop);
+    const pagmo::population new_pop = parallel.evolve(pop);
 
     work_container results{algo, new_pop};
     results.evolveTimeMs = elapsed_ms(evolveStart);
