@@ -10,26 +10,30 @@
 
 void udp_dll_wrapper::_ensure_required_blob() const
 {
-    // Pagmo copies the problem per island and per thread, so several copies may arrive here;
-    // the registry caches, so only the first one reaches the controller.
-    if (!_udpPtr || _udpPtr->has_required_blob())
+    if (_blobReady.load(std::memory_order_acquire))
     {
         return;
     }
 
-    const std::string key = _udpPtr->required_blob_key();
-    if (key.empty())
+    // Copies of the problem each pass here once; the registry caches, so only the first one
+    // reaches the controller
+    std::scoped_lock lock{_blobGuard};
+    if (_udpPtr && !_udpPtr->has_required_blob())
     {
-        return;
+        const std::string key = _udpPtr->required_blob_key();
+        if (!key.empty())
+        {
+            const auto blob = blob_registry::get().fetch(key);
+            if (!blob)
+            {
+                throw std::runtime_error("Cannot obtain blob " + key + " required by " + _libFileName);
+            }
+
+            _udpPtr->accept_blob(*blob);
+        }
     }
 
-    const auto blob = blob_registry::get().fetch(key);
-    if (!blob)
-    {
-        throw std::runtime_error("Cannot obtain blob " + key + " required by " + _libFileName);
-    }
-
-    _udpPtr->accept_blob(*blob);
+    _blobReady.store(true, std::memory_order_release);
 }
 
 pagmo::vector_double udp_dll_wrapper::fitness(const pagmo::vector_double& dv) const
@@ -171,6 +175,7 @@ udp_dll_wrapper& udp_dll_wrapper::operator=(const udp_dll_wrapper& other)
         return *this;
 
     _libFileName = other._libFileName;
+    _blobReady = false;
 
     if (!_libFileName.empty())
         _udpPtr = udp_registry::get().clone_udp(other._udpPtr);

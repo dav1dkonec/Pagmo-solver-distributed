@@ -3,6 +3,8 @@
 #include <map>
 #include <memory>
 #include <any>
+#include <atomic>
+#include <mutex>
 
 #include <boost/serialization/map.hpp>
 
@@ -29,6 +31,9 @@ class udp_dll_wrapper
 
     // Hands the UDP its shared payload on first use; see udp_base::required_blob_key().
     void _ensure_required_blob() const;
+    // Batch evaluation calls fitness() from several threads, and the blob must go in only once
+    mutable std::mutex _blobGuard{};
+    mutable std::atomic<bool> _blobReady{false};
 
 public:
     //#####################################################################################
