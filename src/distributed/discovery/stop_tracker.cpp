@@ -15,15 +15,20 @@ size_t stop_tracker::vector_hash::operator()(const std::vector<double>& x) const
 }
 
 stop_tracker::stop_tracker(const double baseline, const size_t window, const double epsilon,
-                           const std::vector<std::vector<double>>& received) :
+                           const std::vector<std::vector<double>>& received, const size_t curveStride) :
     _received(received.begin(), received.end()),
     _epsilon(epsilon),
     _bestRing(window, baseline),
-    _best(baseline)
+    _best(baseline),
+    _curveStride(curveStride)
 {
     if (window == 0)
     {
         throw std::invalid_argument("stop_tracker needs a window of at least one evaluation");
+    }
+    if (_curveStride != 0)
+    {
+        _bestCurve.push_back(baseline);
     }
 }
 
@@ -53,10 +58,16 @@ void stop_tracker::record(const std::vector<double>& x, const double fitness)
             std::chrono::steady_clock::now() - _start).count());
     }
     slot = _best;
+
+    if (_curveStride != 0 && e % _curveStride == 0)
+    {
+        _bestCurve.push_back(_best);
+    }
 }
 
 stop_point stop_tracker::result() const
 {
     std::scoped_lock lock{_guard};
-    return {_evaluations, _lastSignificant, _lastSignificantMs, _evaluations - _lastSignificant >= _bestRing.size()};
+    return {_evaluations, _lastSignificant, _lastSignificantMs, _evaluations - _lastSignificant >= _bestRing.size(),
+            _bestCurve};
 }

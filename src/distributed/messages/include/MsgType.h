@@ -189,6 +189,8 @@ public:
     size_t stopEvaluation{};
     uint64_t stopTimeMs{};
     bool converged{};
+    // Measurement only: best fitness after every population-size evaluations, from f(0)
+    std::vector<double> bestCurve{};
 
     work_container(pagmo::algorithm algo, pagmo::population pop, std::string preferredWorker = "",
                    const size_t cycleCount = 1, const size_t generationCount = 0) :
@@ -214,7 +216,7 @@ private:
     {
         pagmo::detail::to_archive(ar, algo, pop, preferredWorkerId, cycleCount, generationCount, evolveTimeMs,
                                   evolvedPopulation, islandCount, stopEpsilon, stopWindowGenerations, evaluations,
-                                  stopEvaluation, stopTimeMs, converged);
+                                  stopEvaluation, stopTimeMs, converged, bestCurve);
     }
 
     template <typename Archive>
@@ -222,7 +224,7 @@ private:
     {
         pagmo::detail::from_archive(ar, algo, pop, preferredWorkerId, cycleCount, generationCount, evolveTimeMs,
                                     evolvedPopulation, islandCount, stopEpsilon, stopWindowGenerations,
-                                    evaluations, stopEvaluation, stopTimeMs, converged);
+                                    evaluations, stopEvaluation, stopTimeMs, converged, bestCurve);
     }
 
     BOOST_SERIALIZATION_SPLIT_MEMBER()

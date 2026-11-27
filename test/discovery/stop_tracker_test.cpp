@@ -119,6 +119,15 @@ TEST_CASE("Stop tracker - stopping point", "[stop-tracker]")
         REQUIRE(tracker.result().evaluations == 1);
     }
 
+    SECTION("the curve samples the best every stride evaluations, from f(0)") {
+        stop_tracker tracker{10.0, 2, 0.001, {}, 2};
+        for (const double f : {9.0, 11.0, 8.0, 8.5, 7.0})
+        {
+            tracker.record(next_x(), f);
+        }
+        REQUIRE(tracker.result().bestCurve == std::vector<double>{10.0, 9.0, 8.0});
+    }
+
     SECTION("a zero window is refused") {
         REQUIRE_THROWS_AS((stop_tracker{1.0, 0, 0.001}), std::invalid_argument);
     }

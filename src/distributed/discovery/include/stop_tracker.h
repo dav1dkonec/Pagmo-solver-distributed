@@ -16,6 +16,8 @@ struct stop_point
     uint64_t stopTimeMs{};
     // A full window without such improvement followed; the unit still ran all its generations
     bool converged{};
+    // Measurement only: best fitness at e = 0, k, 2k, ...; empty unless a stride was given
+    std::vector<double> bestCurve{};
 };
 
 /**
@@ -29,7 +31,8 @@ struct stop_point
 class stop_tracker
 {
 public:
-    stop_tracker(double baseline, size_t window, double epsilon, const std::vector<std::vector<double>>& received = {});
+    stop_tracker(double baseline, size_t window, double epsilon, const std::vector<std::vector<double>>& received = {},
+                 size_t curveStride = 0);
 
     void record(const std::vector<double>& x, double fitness);
     stop_point result() const;
@@ -51,4 +54,6 @@ private:
     size_t _evaluations{};
     size_t _lastSignificant{};
     uint64_t _lastSignificantMs{};
+    const size_t _curveStride;
+    std::vector<double> _bestCurve{};
 };

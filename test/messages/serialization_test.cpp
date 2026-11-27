@@ -33,6 +33,7 @@ TEST_CASE("Serialization - work_container", "[serialize]")
         original.stopEvaluation = 700;
         original.stopTimeMs = 4321;
         original.converged = true;
+        original.bestCurve = {0.5, 0.4};
 
         const auto deserialized = vector_deserialize<work_container>(vector_serialize<work_container>(original));
         REQUIRE(deserialized.stopEpsilon == 0.001);
@@ -41,6 +42,7 @@ TEST_CASE("Serialization - work_container", "[serialize]")
         REQUIRE(deserialized.stopEvaluation == 700);
         REQUIRE(deserialized.stopTimeMs == 4321);
         REQUIRE(deserialized.converged);
+        REQUIRE(deserialized.bestCurve == std::vector<double>{0.5, 0.4});
     }
     
     SECTION("default constructor fields") {

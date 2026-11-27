@@ -51,7 +51,7 @@ namespace
 
         // The individuals the unit starts from, so that re-evaluating them is not counted as search
         auto tracker = std::make_shared<stop_tracker>(pop.champion_f().front(), windowGenerations * pop.size(),
-                                                      epsilon, pop.get_x());
+                                                      epsilon, pop.get_x(), pop.size());
         wrapper->set_stop_tracker(tracker);
         return tracker;
     }
@@ -65,6 +65,7 @@ namespace
             results.stopEvaluation = point.stopEvaluation;
             results.stopTimeMs = point.stopTimeMs;
             results.converged = point.converged;
+            results.bestCurve = point.bestCurve;
         }
     }
 }

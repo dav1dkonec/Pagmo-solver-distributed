@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <sstream>
 
 #include "vector_deserialize.h"
 #include "vector_istreambuf.h"
@@ -129,6 +130,20 @@ void distributed_controller::_handle_Workers_Socket_Msg()
             {
                 dist_logger()->info("Worker {} made no significant improvement within {} evaluations", workerId,
                                     workResults.evaluations);
+            }
+
+            if (!workResults.bestCurve.empty())
+            {
+                // Measurement only: one line per unit for estimating epsilon offline (stop_curve.py)
+                std::ostringstream curve;
+                curve.precision(10);
+                for (const double f : workResults.bestCurve)
+                {
+                    curve << ' ' << f;
+                }
+                dist_logger()->info("Best curve: worker {} solver {} individuals {} generations {} evaluations {}:{}",
+                                    workerId, workResults.algo.get_name(), workResults.pop.size(),
+                                    allocation.unitGenerations, workResults.evaluations, curve.str());
             }
 
             // Pass results from worker to island
