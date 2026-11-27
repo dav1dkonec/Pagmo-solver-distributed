@@ -16,6 +16,7 @@
 
 #include "logger_init.h"
 #include "udp_registry.h"
+#include "stop_tracker.h"
 
 class udp_dll_wrapper
 {
@@ -34,6 +35,9 @@ class udp_dll_wrapper
     // Batch evaluation calls fitness() from several threads, and the blob must go in only once
     mutable std::mutex _blobGuard{};
     mutable std::atomic<bool> _blobReady{false};
+
+    // Shared by the copies pagmo makes during one unit; empty outside a worker's unit
+    std::shared_ptr<stop_tracker> _stopTracker{};
 
 public:
     //#####################################################################################
@@ -71,6 +75,9 @@ public:
     explicit udp_dll_wrapper(const std::string& lib_file_name, const std::any& lib_object_params = std::any());
 
     [[nodiscard]] virtual std::string get_lib_file_name() const;
+
+    // Every evaluation of this problem and of its later copies goes to the tracker
+    void set_stop_tracker(std::shared_ptr<stop_tracker> tracker);
 
     // Custom copy constructor, ensuring that the UDP itself is cloned, not just the pointer being copied
     udp_dll_wrapper(const udp_dll_wrapper& other);

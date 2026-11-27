@@ -61,12 +61,14 @@ class distributed_worker : public logger_control
      * Spawns a new thread and then simply calls algo.evolve(pop), this causes
      * the evolution algorithm to use only a single CPU core
      */
-    void _single_threaded_worker(const pagmo::algorithm& algo, const pagmo::population& pop);
+    void _single_threaded_worker(const pagmo::algorithm& algo, pagmo::population& pop, double stopEpsilon,
+                                 size_t stopWindowGenerations);
 
     /**
      * Archipelago based worker, causes multiple CPU cores to be used
      */
-    void _archipelago_based_worker(pagmo::algorithm& algo, pagmo::population& pop, size_t archiCycleCount);
+    void _archipelago_based_worker(pagmo::algorithm& algo, pagmo::population& pop, size_t archiCycleCount,
+                                   double stopEpsilon, size_t stopWindowGenerations);
 
     // Minimal pop size for the archipelago worker's islands
     size_t _minIslandPopSize;

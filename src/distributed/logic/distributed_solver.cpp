@@ -290,7 +290,8 @@ void distributed_solver::evolve(const pagmo::problem& problem, const algorithm_f
     for (const auto& assignment : workPlan)
     {
         distributed_island dist_island{
-            assignment.preferredWorkerId, assignment.cycleCount, assignment.generationCount
+            assignment.preferredWorkerId, assignment.cycleCount, assignment.generationCount, _stopEpsilon,
+            _stopWindowGenerations
         };
         auto isl = pagmo::island{
             dist_island, portfolio_for(assignment.generationCount).at(assignment.algorithmIndex), problem,
@@ -413,6 +414,12 @@ bool distributed_solver::wait_until_workers_connect(const size_t workerCount,
 void distributed_solver::set_worker_rejoin_timeout(const std::chrono::milliseconds timeout)
 {
     _controller.set_rejoin_timeout(timeout);
+}
+
+void distributed_solver::set_stopping_point(const double epsilon, const size_t windowGenerations)
+{
+    _stopEpsilon = epsilon;
+    _stopWindowGenerations = windowGenerations;
 }
 
 bool distributed_solver::wait_until_workers_connect(const std::chrono::milliseconds timeout)

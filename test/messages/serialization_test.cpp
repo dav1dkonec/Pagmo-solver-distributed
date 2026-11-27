@@ -24,6 +24,24 @@ TEST_CASE("Serialization - work_container", "[serialize]")
         REQUIRE(deserialized.cycleCount == 3);
         REQUIRE(deserialized.pop.size() == pop.size());
     }
+
+    SECTION("stopping point settings and result travel with the unit") {
+        work_container original(algo, pop);
+        original.stopEpsilon = 0.001;
+        original.stopWindowGenerations = 5;
+        original.evaluations = 1200;
+        original.stopEvaluation = 700;
+        original.stopTimeMs = 4321;
+        original.converged = true;
+
+        const auto deserialized = vector_deserialize<work_container>(vector_serialize<work_container>(original));
+        REQUIRE(deserialized.stopEpsilon == 0.001);
+        REQUIRE(deserialized.stopWindowGenerations == 5);
+        REQUIRE(deserialized.evaluations == 1200);
+        REQUIRE(deserialized.stopEvaluation == 700);
+        REQUIRE(deserialized.stopTimeMs == 4321);
+        REQUIRE(deserialized.converged);
+    }
     
     SECTION("default constructor fields") {
         work_container container;

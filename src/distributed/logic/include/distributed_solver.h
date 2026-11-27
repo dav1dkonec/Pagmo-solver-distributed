@@ -55,6 +55,10 @@ class distributed_solver : public logger_control
     // Cycles of each node's own archipelago per unit; migrants move between its cores only then
     size_t _islandCycleCount;
 
+    // Stopping point measured on the workers; a window of 0 turns it off
+    double _stopEpsilon = 0.0;
+    size_t _stopWindowGenerations = 0;
+
     distributed_controller _controller;
     size_t _expectedWorkerCount;
 
@@ -128,6 +132,9 @@ public:
 
     // A worker that drops off mid-unit keeps its unit this long before it goes to another node
     void set_worker_rejoin_timeout(std::chrono::milliseconds timeout);
+
+    // Workers report when improvement fell below epsilon (relative) over windowGenerations generations
+    void set_stopping_point(double epsilon, size_t windowGenerations);
 
     size_t get_current_worker_count();
 

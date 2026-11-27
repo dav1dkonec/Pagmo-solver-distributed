@@ -26,6 +26,7 @@ add_executable(unit_tests_distributed_solver
 
     # Phase 5: Discovery Layer
     discovery/udp_registry_test.cpp
+    discovery/stop_tracker_test.cpp
     
     # Phase 6: Socket Layer
     sockets/socket_roundtrip_test.cpp

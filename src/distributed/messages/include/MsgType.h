@@ -179,6 +179,16 @@ public:
     // Islands the worker ran in parallel, so the controller can tell throughput per island
     // from throughput of the whole node. Also only set on the way back.
     size_t islandCount{};
+    // Stopping point settings, on the way out: relative improvement threshold and window in
+    // generations; a window of 0 leaves the unit untracked
+    double stopEpsilon{};
+    size_t stopWindowGenerations{};
+    // On the way back: evaluations the unit made, the last one that still improved by the threshold
+    // with the time it took to get there (0 if none did), and whether a full window without it followed
+    size_t evaluations{};
+    size_t stopEvaluation{};
+    uint64_t stopTimeMs{};
+    bool converged{};
 
     work_container(pagmo::algorithm algo, pagmo::population pop, std::string preferredWorker = "",
                    const size_t cycleCount = 1, const size_t generationCount = 0) :
@@ -203,14 +213,16 @@ private:
     void save(Archive& ar, unsigned) const
     {
         pagmo::detail::to_archive(ar, algo, pop, preferredWorkerId, cycleCount, generationCount, evolveTimeMs,
-                                  evolvedPopulation, islandCount);
+                                  evolvedPopulation, islandCount, stopEpsilon, stopWindowGenerations, evaluations,
+                                  stopEvaluation, stopTimeMs, converged);
     }
 
     template <typename Archive>
     void load(Archive& ar, unsigned)
     {
         pagmo::detail::from_archive(ar, algo, pop, preferredWorkerId, cycleCount, generationCount, evolveTimeMs,
-                                    evolvedPopulation, islandCount);
+                                    evolvedPopulation, islandCount, stopEpsilon, stopWindowGenerations,
+                                    evaluations, stopEvaluation, stopTimeMs, converged);
     }
 
     BOOST_SERIALIZATION_SPLIT_MEMBER()

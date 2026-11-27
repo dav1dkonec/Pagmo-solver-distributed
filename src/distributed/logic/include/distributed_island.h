@@ -21,6 +21,9 @@ class distributed_island
     size_t _cycleCount = 1;
     // Generations the algorithm runs per cycle; the controller needs it to measure the unit
     size_t _generationCount = 0;
+    // Stopping point settings the worker measures the unit with; a window of 0 turns it off
+    double _stopEpsilon = 0.0;
+    size_t _stopWindowGenerations = 0;
 
     static std::tuple<pagmo::algorithm, pagmo::population> _load_pagmo_pop_and_algo(const pagmo::island& isl);
 
@@ -36,7 +39,8 @@ public:
     // Default ctor.
     distributed_island();
 
-    distributed_island(const std::string& preferred_worker_id, size_t cycle_count, size_t generation_count);
+    distributed_island(const std::string& preferred_worker_id, size_t cycle_count, size_t generation_count,
+                       double stop_epsilon = 0.0, size_t stop_window_generations = 0);
 
     // Island's name.
     std::string get_name() const;

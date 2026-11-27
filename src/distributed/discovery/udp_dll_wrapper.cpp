@@ -39,7 +39,12 @@ void udp_dll_wrapper::_ensure_required_blob() const
 pagmo::vector_double udp_dll_wrapper::fitness(const pagmo::vector_double& dv) const
 {
     _ensure_required_blob();
-    return _udpPtr->fitness(dv);
+    auto result = _udpPtr->fitness(dv);
+    if (_stopTracker && !result.empty())
+    {
+        _stopTracker->record(dv, result.front());
+    }
+    return result;
 }
 
 std::pair<pagmo::vector_double, pagmo::vector_double> udp_dll_wrapper::get_bounds() const
@@ -69,7 +74,19 @@ pagmo::vector_double::size_type udp_dll_wrapper::get_nix() const
 
 pagmo::vector_double udp_dll_wrapper::batch_fitness(const pagmo::vector_double& v) const
 {
-    return _udpPtr->batch_fitness(v);
+    auto result = _udpPtr->batch_fitness(v);
+    if (_stopTracker)
+    {
+        // v holds the candidates one after another, result their fitness vectors likewise
+        const auto nobj = _udpPtr->get_nobj();
+        const auto dim = _udpPtr->get_bounds().first.size();
+        for (size_t i = 0; i * nobj < result.size(); ++i)
+        {
+            const auto begin = v.begin() + static_cast<std::ptrdiff_t>(i * dim);
+            _stopTracker->record({begin, begin + static_cast<std::ptrdiff_t>(dim)}, result[i * nobj]);
+        }
+    }
+    return result;
 }
 
 bool udp_dll_wrapper::has_batch_fitness() const
@@ -162,7 +179,14 @@ std::string udp_dll_wrapper::get_lib_file_name() const
     return _libFileName;
 }
 
-udp_dll_wrapper::udp_dll_wrapper(const udp_dll_wrapper& other) : _libFileName(other._libFileName)
+void udp_dll_wrapper::set_stop_tracker(std::shared_ptr<stop_tracker> tracker)
+{
+    _stopTracker = std::move(tracker);
+}
+
+udp_dll_wrapper::udp_dll_wrapper(const udp_dll_wrapper& other) :
+    _libFileName(other._libFileName),
+    _stopTracker(other._stopTracker)
 {
     // Possibly allow an empty object to exist (we expose the default constructor)
     if (!_libFileName.empty())
@@ -176,6 +200,7 @@ udp_dll_wrapper& udp_dll_wrapper::operator=(const udp_dll_wrapper& other)
 
     _libFileName = other._libFileName;
     _blobReady = false;
+    _stopTracker = other._stopTracker;
 
     if (!_libFileName.empty())
         _udpPtr = udp_registry::get().clone_udp(other._udpPtr);

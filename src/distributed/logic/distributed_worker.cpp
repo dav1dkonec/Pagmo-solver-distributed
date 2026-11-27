@@ -8,6 +8,8 @@
 
 #include "defines.h"
 #include "population_tools.h"
+#include "stop_tracker.h"
+#include "udp_dll_wrapper.h"
 #include "vector_deserialize.h"
 #include "pagmo/archipelago.hpp"
 #include "pagmo/algorithms/gaco.hpp"
@@ -35,6 +37,35 @@ namespace
 
         dist_logger()->debug("Assuming 8 cores (cannot detect core count)");
         return 8;
+    }
+
+    // Arms the tracker on pop's problem; the copies the unit evolves share it. Single-objective only.
+    std::shared_ptr<stop_tracker> track_stopping(pagmo::population& pop, const double epsilon,
+                                                 const size_t windowGenerations)
+    {
+        auto* wrapper = pop.get_problem().extract<udp_dll_wrapper>();
+        if (windowGenerations == 0 || pop.size() == 0 || !wrapper || pop.get_problem().get_nobj() != 1)
+        {
+            return {};
+        }
+
+        // The individuals the unit starts from, so that re-evaluating them is not counted as search
+        auto tracker = std::make_shared<stop_tracker>(pop.champion_f().front(), windowGenerations * pop.size(),
+                                                      epsilon, pop.get_x());
+        wrapper->set_stop_tracker(tracker);
+        return tracker;
+    }
+
+    void report_stopping(work_container& results, const std::shared_ptr<stop_tracker>& tracker)
+    {
+        if (tracker)
+        {
+            const auto point = tracker->result();
+            results.evaluations = point.evaluations;
+            results.stopEvaluation = point.stopEvaluation;
+            results.stopTimeMs = point.stopTimeMs;
+            results.converged = point.converged;
+        }
     }
 }
 
@@ -126,7 +157,8 @@ void distributed_worker::_handle_Thread_Socket_Msg()
 //# Worker logic
 //#####################################################################################
 
-void distributed_worker::_single_threaded_worker(const pagmo::algorithm& algo, const pagmo::population& pop)
+void distributed_worker::_single_threaded_worker(const pagmo::algorithm& algo, pagmo::population& pop,
+                                                 const double stopEpsilon, const size_t stopWindowGenerations)
 {
     dist_logger()->debug("Single-threaded worker started... ");
 
@@ -144,6 +176,7 @@ void distributed_worker::_single_threaded_worker(const pagmo::algorithm& algo, c
         gaco->set_bfe(pagmo::bfe{});
     }
 
+    const auto tracker = track_stopping(pop, stopEpsilon, stopWindowGenerations);
     const auto evolveStart = std::chrono::steady_clock::now();
     const pagmo::population new_pop = parallel.evolve(pop);
 
@@ -151,6 +184,7 @@ void distributed_worker::_single_threaded_worker(const pagmo::algorithm& algo, c
     results.evolveTimeMs = elapsed_ms(evolveStart);
     results.evolvedPopulation = pop.size();
     results.islandCount = 1;
+    report_stopping(results, tracker);
     output.send(MsgType::WORK_RESULTS, results);
 }
 
@@ -226,7 +260,8 @@ std::vector<pagmo::population> distributed_worker::_split_population_for_islands
 }
 
 void distributed_worker::_archipelago_based_worker(pagmo::algorithm& algo, pagmo::population& pop,
-                                                   const size_t archiCycleCount)
+                                                   const size_t archiCycleCount, const double stopEpsilon,
+                                                   const size_t stopWindowGenerations)
 {
     dist_logger()->debug("Archipelago-based worker started... ");
 
@@ -238,6 +273,8 @@ void distributed_worker::_archipelago_based_worker(pagmo::algorithm& algo, pagmo
     // Everything from here to step 7 is computation done by this node. The controller
     // cannot see where its own round-trip measurement ends and this begins.
     const auto evolveStart = std::chrono::steady_clock::now();
+    // Armed before the split, so all islands report to one tracker: e counts for the whole node
+    const auto tracker = track_stopping(pop, stopEpsilon, stopWindowGenerations);
 
     // 2) Get island count based on hardware core count
     const unsigned islandCount = _compute_optimal_island_count(pop.size(), _minIslandPopSize);
@@ -280,6 +317,7 @@ void distributed_worker::_archipelago_based_worker(pagmo::algorithm& algo, pagmo
     results.evolveTimeMs = elapsed_ms(evolveStart);
     results.evolvedPopulation = evolvedPopulation;
     results.islandCount = islandCount;
+    report_stopping(results, tracker);
     output.send(MsgType::WORK_RESULTS, results);
 }
 
@@ -307,11 +345,12 @@ void distributed_worker::_start_worker_thread(const std::vector<std::byte>& work
 
                 if (_workerMode == worker_mode::ARCHIPELAGO_BASED)
                 {
-                    _archipelago_based_worker(wct.algo, wct.pop, wct.cycleCount);
+                    _archipelago_based_worker(wct.algo, wct.pop, wct.cycleCount, wct.stopEpsilon,
+                                              wct.stopWindowGenerations);
                 }
                 else
                 {
-                    _single_threaded_worker(wct.algo, wct.pop);
+                    _single_threaded_worker(wct.algo, wct.pop, wct.stopEpsilon, wct.stopWindowGenerations);
                 }
             }
             catch (const std::exception& e)

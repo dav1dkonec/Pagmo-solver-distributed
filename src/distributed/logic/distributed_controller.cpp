@@ -113,6 +113,24 @@ void distributed_controller::_handle_Workers_Socket_Msg()
                                                        workResults.algo.get_name(), workResults.evolveTimeMs,
                                                        workResults.islandCount, allocation.unitGenerations);
 
+            if (workResults.stopEvaluation != 0)
+            {
+                // Solvers spend evaluations outside generations too, so the share of the unit's
+                // evaluations converts to generations better than dividing by the population
+                const double stopGenerations = static_cast<double>(allocation.unitGenerations)
+                    * static_cast<double>(workResults.stopEvaluation) / static_cast<double>(workResults.evaluations);
+                dist_logger()->info("Worker {} {}: last significant improvement at {} of {} evaluations, "
+                                    "{:.1f} of {} generations at {} individuals, {} ms", workerId,
+                                    workResults.converged ? "converged" : "still improving", workResults.stopEvaluation,
+                                    workResults.evaluations, stopGenerations, allocation.unitGenerations,
+                                    workResults.pop.size(), workResults.stopTimeMs);
+            }
+            else if (workResults.evaluations != 0)
+            {
+                dist_logger()->info("Worker {} made no significant improvement within {} evaluations", workerId,
+                                    workResults.evaluations);
+            }
+
             // Pass results from worker to island
             _islandsSocket.send(allocation.islandId, MsgType::WORK_RESULTS, binary);
 

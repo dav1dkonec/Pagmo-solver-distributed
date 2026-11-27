@@ -74,12 +74,15 @@ distributed_island::distributed_island() : _ctx{new zmq::context_t{}},
 }
 
 distributed_island::distributed_island(const std::string& preferred_worker_id, const size_t cycle_count,
-                                       const size_t generation_count) :
+                                       const size_t generation_count, const double stop_epsilon,
+                                       const size_t stop_window_generations) :
     _ctx{new zmq::context_t{}},
     _dealerSocket{new distributed::dealer_socket(*_ctx)},
     _preferredWorkerId(preferred_worker_id),
     _cycleCount(cycle_count),
-    _generationCount(generation_count)
+    _generationCount(generation_count),
+    _stopEpsilon(stop_epsilon),
+    _stopWindowGenerations(stop_window_generations)
 {
     _islandId = "island_" + uuid::v4::UUID::New().String();
 }
@@ -113,11 +116,10 @@ void distributed_island::run_evolve(pagmo::island& isl) const
         dist_logger()->debug("Running distributed island");
         _dealerSocket->connect("ipc://distributed_controller_islands_socket");
         dist_logger()->debug("Distributed island connected");
-        _dealerSocket->send(MsgType::ALLOCATE_WORK,
-                            work_container{
-                                initial_algo, initial_pop, _preferredWorkerId, _cycleCount, _generationCount
-                            }
-        );
+        work_container unit{initial_algo, initial_pop, _preferredWorkerId, _cycleCount, _generationCount};
+        unit.stopEpsilon = _stopEpsilon;
+        unit.stopWindowGenerations = _stopWindowGenerations;
+        _dealerSocket->send(MsgType::ALLOCATE_WORK, unit);
         dist_logger()->debug("Distributed island allocate work sent");
 
         // 3) Wait until controller returns results from worker
